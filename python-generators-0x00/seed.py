@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/home/ndungu-kinyanjui/Desktop/ProDev-Backend/alx-backend-python/venv/bin/python
 """
 Module for seeding a MySQL database with user data.
 This module provides functions to connect to a MySQL database,
