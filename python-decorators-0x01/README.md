@@ -108,3 +108,62 @@ python 1-with_db_connection.py
 python test_with_db_connection.py
 python test_error_handling.py
 ```
+
+## Task 2: Transaction Management Decorator
+
+### Objective
+Create a decorator that manages database transactions by automatically committing or rolling back changes.
+
+### Implementation
+The `transactional` decorator ensures database operations are wrapped in transactions with automatic commit/rollback handling.
+
+### Key Features
+- **Automatic Transaction Management**: Begins transactions before function execution
+- **Smart Commit/Rollback**: Commits on success, rolls back on exceptions
+- **Exception Preservation**: Re-raises exceptions after rollback for proper error handling
+- **Decorator Composition**: Works seamlessly with `@with_db_connection`
+- **ACID Compliance**: Ensures atomicity, consistency, isolation, and durability
+
+### Usage Example
+```python
+@with_db_connection
+@transactional
+def update_user_email(conn, user_id, new_email):
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET email = ? WHERE id = ?", (new_email, user_id))
+
+# Automatically commits if successful, rolls back if error occurs
+update_user_email(user_id=1, new_email='new@example.com')
+```
+
+### Files
+- `2-transactional.py`: Main implementation file
+- `test_transactional.py`: Basic transaction testing
+- `test_advanced_transactional.py`: Complex rollback scenarios
+
+### How It Works
+1. The decorator begins a database transaction before function execution
+2. Executes the decorated function with the database connection
+3. If the function completes successfully, commits the transaction
+4. If an exception occurs, rolls back all changes and re-raises the exception
+5. Ensures data consistency regardless of operation outcome
+
+### Benefits
+- **Data Integrity**: Ensures all-or-nothing execution for database operations
+- **Error Recovery**: Automatic rollback prevents partial updates
+- **Simplified Code**: Eliminates manual transaction management
+- **Composability**: Works with other decorators like `@with_db_connection`
+- **Reliability**: Handles complex multi-operation transactions safely
+
+### Transaction Scenarios
+✅ **Success Case**: Multiple operations → All committed
+✅ **Failure Case**: Error during operations → All rolled back
+✅ **Complex Operations**: Batch updates handled atomically
+✅ **Exception Safety**: Proper cleanup even with unexpected errors
+
+### Testing
+```bash
+python 2-transactional.py
+python test_transactional.py
+python test_advanced_transactional.py
+```
