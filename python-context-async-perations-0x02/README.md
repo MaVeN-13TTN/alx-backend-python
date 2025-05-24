@@ -9,8 +9,12 @@ python-context-async-perations-0x02/
 ├── README.md                          # This documentation file
 ├── 0-databaseconnection.py           # Synchronous context manager implementation
 ├── 1-async_database_connection.py    # Asynchronous context manager implementation
+├── 1-execute.py                       # Original reusable query context manager
+├── execute.py                         # Importable module version of ExecuteQuery
 ├── test_context_manager.py           # Comprehensive tests for sync context manager
 ├── test_async_context_manager.py     # Comprehensive tests for async context manager
+├── test_execute_requirements.py      # Tests for ExecuteQuery context manager
+├── demo_exact_requirements.py        # Minimal demo of ExecuteQuery requirements
 └── users.db                          # SQLite database with sample data
 ```
 
@@ -20,6 +24,7 @@ By working with this project, you will understand:
 
 - **Context Managers**: How to implement `__enter__` and `__exit__` methods
 - **Async Context Managers**: How to implement `__aenter__` and `__aexit__` methods
+- **Reusable Query Managers**: Creating flexible context managers for any SQL query
 - **Resource Management**: Automatic cleanup of database connections
 - **Error Handling**: Proper exception handling and transaction rollback
 - **Async Programming**: Benefits of concurrent operations with `asyncio`
@@ -41,6 +46,14 @@ By working with this project, you will understand:
 - ✅ Automatic async resource management
 - ✅ Performance optimization for multiple operations
 - ✅ Demonstration of concurrent execution benefits
+
+### Reusable Query Context Manager (`1-execute.py` & `execute.py`)
+- ✅ Flexible query execution with any SQL statement
+- ✅ Parameterized query support for safety
+- ✅ Automatic connection and transaction management
+- ✅ Built-in error handling and rollback
+- ✅ Result formatting and display utilities
+- ✅ Works with SELECT, INSERT, UPDATE, DELETE operations
 
 ## 📋 Prerequisites
 
@@ -79,6 +92,9 @@ pip install aiosqlite
    
    # Test asynchronous context manager
    python 1-async_database_connection.py
+   
+   # Test reusable query context manager
+   python 1-execute.py
    ```
 
 ## 📖 Usage Examples
@@ -94,6 +110,28 @@ with DatabaseConnection("users.db") as cursor:
     users = cursor.fetchall()
     for user in users:
         print(f"{user[1]} - {user[3]} years old")
+```
+
+### Reusable Query Context Manager
+
+```python
+from 1-execute import ExecuteQuery
+
+# Execute the exact query from requirements
+with ExecuteQuery("users.db", "SELECT * FROM users WHERE age > ?", (25,)) as query_manager:
+    results = query_manager.get_results()
+    for user in results:
+        print(f"{user[1]} - {user[3]} years old")
+
+# Insert new data
+with ExecuteQuery("users.db", "INSERT INTO users (name, email, age) VALUES (?, ?, ?)", 
+                 ("John Doe", "john@example.com", 30)) as query_manager:
+    pass  # Automatically committed
+
+# Count users
+with ExecuteQuery("users.db", "SELECT COUNT(*) FROM users") as query_manager:
+    count = query_manager.get_results()[0][0]
+    print(f"Total users: {count}")
 ```
 
 ### Asynchronous Context Manager
@@ -152,6 +190,21 @@ python test_context_manager.py
 - ✅ Transaction rollback scenarios
 - ✅ Multiple context manager instances
 - ✅ Nested context managers
+
+### Run Reusable Query Tests
+```bash
+python test_execute_requirements.py
+# or
+python demo_exact_requirements.py
+```
+
+**Test Coverage:**
+- ✅ ExecuteQuery context manager functionality
+- ✅ Query execution with parameters
+- ✅ Context manager protocol verification
+- ✅ Error handling and rollback
+- ✅ Multiple query types (SELECT, INSERT, UPDATE, DELETE)
+- ✅ Result formatting and display
 
 ### Run Asynchronous Tests
 ```bash
@@ -229,6 +282,25 @@ class AsyncDatabaseConnection:
         # Async close connection
 ```
 
+### Reusable Query Context Manager Protocol
+```python
+class ExecuteQuery:
+    def __init__(self, db_name, query, parameters=None):
+        # Store query details
+        
+    def __enter__(self):
+        # Open connection
+        # Execute query with parameters
+        # Fetch results for SELECT queries
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # Handle exceptions and rollback if needed
+        # Commit transactions for non-SELECT queries
+        # Close connection
+        # Async close connection
+```
+
 ## 🛡️ Error Handling
 
 Both implementations provide robust error handling:
@@ -243,10 +315,11 @@ Both implementations provide robust error handling:
 This project teaches:
 
 1. **Context Manager Patterns**: The `with` statement and resource management
-2. **Async Programming**: Modern Python concurrency patterns
-3. **Database Best Practices**: Transaction management and error handling
-4. **Performance Optimization**: When and how to use async operations
-5. **Testing Strategies**: Comprehensive test coverage for both sync and async code
+2. **Reusable Query Execution**: Creating flexible, parameterized query managers
+3. **Async Programming**: Modern Python concurrency patterns
+4. **Database Best Practices**: Transaction management and error handling
+5. **Performance Optimization**: When and how to use async operations
+6. **Testing Strategies**: Comprehensive test coverage for both sync and async code
 
 ## 📚 Key Concepts Demonstrated
 
@@ -254,6 +327,7 @@ This project teaches:
 - Automatic resource management
 - Exception-safe cleanup
 - The `with` statement protocol
+- Reusable query execution patterns
 
 ### Async Programming
 - `async`/`await` keywords
@@ -265,6 +339,7 @@ This project teaches:
 - SQLite integration
 - Transaction handling
 - Error recovery
+- Parameterized queries for security
 - Connection pooling concepts
 
 ## 🚦 Running the Project
@@ -277,9 +352,13 @@ python 0-databaseconnection.py
 # Run async demo  
 python 1-async_database_connection.py
 
+# Run reusable query demo
+python 1-execute.py
+
 # Run all tests
 python test_context_manager.py
 python test_async_context_manager.py
+python test_execute_requirements.py
 ```
 
 ### Sample Database Schema
@@ -301,6 +380,29 @@ To extend this project:
 3. Add more comprehensive error scenarios
 4. Create performance benchmarking tools
 5. Add support for other database types
+6. Implement async version of ExecuteQuery
+7. Add query caching and optimization features
+
+## 🎯 Task Implementations
+
+### Task 1: Reusable Query Context Manager (`1-execute.py`)
+**Objective**: Create a reusable context manager that takes a query as input and executes it, managing both connection and query execution.
+
+**Key Features**:
+- **Class**: `ExecuteQuery` with `__enter__` and `__exit__` methods
+- **Required Query**: `"SELECT * FROM users WHERE age > ?"` with parameter `25`
+- **Flexible Design**: Works with any SQL query and parameters
+- **Automatic Management**: Handles connection, transaction, and cleanup
+- **Error Handling**: Comprehensive exception management and rollback
+- **Result Access**: `get_results()` method and formatted display options
+
+**Usage Example**:
+```python
+# Exact requirements implementation
+with ExecuteQuery("users.db", "SELECT * FROM users WHERE age > ?", (25,)) as query_manager:
+    results = query_manager.get_results()
+    query_manager.print_results()
+```
 
 ## 📝 License
 
