@@ -167,3 +167,88 @@ python 2-transactional.py
 python test_transactional.py
 python test_advanced_transactional.py
 ```
+
+## Task 3: Retry Database Queries Decorator
+
+### Objective
+Create a decorator that retries database operations if they fail due to transient errors.
+
+### Implementation
+The `retry_on_failure` decorator provides configurable retry logic for database operations with automatic backoff.
+
+### Key Features
+- **Configurable Retries**: Customizable number of retry attempts (default: 3)
+- **Configurable Delays**: Adjustable delay between retries (default: 2 seconds)
+- **Intelligent Failure Handling**: Distinguishes between transient and permanent errors
+- **Immediate Success**: Returns immediately on successful execution
+- **Exception Preservation**: Re-raises the last exception if all retries fail
+- **Decorator Composition**: Works seamlessly with other decorators
+
+### Usage Example
+```python
+@with_db_connection
+@retry_on_failure(retries=3, delay=1)
+def fetch_users_with_retry(conn):
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users")
+    return cursor.fetchall()
+
+# Automatically retries up to 3 times with 1-second delays
+users = fetch_users_with_retry()
+```
+
+### Configuration Options
+```python
+# Quick retry with minimal delay
+@retry_on_failure(retries=1, delay=0.5)
+
+# Patient retry with many attempts
+@retry_on_failure(retries=5, delay=0.2)
+
+# No retry (immediate failure)
+@retry_on_failure(retries=0, delay=1)
+
+# Default configuration
+@retry_on_failure()  # retries=3, delay=2
+```
+
+### Files
+- `3-retry_on_failure.py`: Main implementation file
+- `test_retry_on_failure.py`: Comprehensive retry scenarios
+- `test_retry_configurations.py`: Different configuration testing
+
+### How It Works
+1. The decorator attempts to execute the function
+2. If successful, returns the result immediately
+3. If an exception occurs, waits for the specified delay
+4. Retries the function up to the maximum number of attempts
+5. If all retries fail, raises the last exception encountered
+6. Logs retry attempts for debugging and monitoring
+
+### Benefits
+- **Resilience**: Handles transient database issues automatically
+- **Configurable**: Adaptable to different failure scenarios
+- **Non-intrusive**: Transparent to the calling code
+- **Debugging Friendly**: Logs retry attempts for monitoring
+- **Performance Optimized**: No delay on immediate success
+
+### Retry Scenarios
+✅ **Immediate Success**: No retries needed
+✅ **Transient Failures**: Success after 1-2 retries
+✅ **Persistent Failures**: Proper failure after exhausting retries
+✅ **Different Configurations**: Various retry/delay combinations
+✅ **Zero Retries**: Immediate failure mode
+
+### Common Use Cases
+- Database connection timeouts
+- Network connectivity issues
+- Database lock conflicts
+- Resource temporarily unavailable
+- Connection pool exhaustion
+
+### Testing
+```bash
+python 3-retry_on_failure.py
+python test_retry_on_failure.py
+python test_retry_configurations.py
+```
