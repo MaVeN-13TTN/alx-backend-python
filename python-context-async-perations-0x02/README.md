@@ -11,10 +11,13 @@ python-context-async-perations-0x02/
 ├── 1-async_database_connection.py    # Asynchronous context manager implementation
 ├── 1-execute.py                       # Original reusable query context manager
 ├── execute.py                         # Importable module version of ExecuteQuery
+├── 3-concurrent.py                    # Concurrent async database queries with asyncio.gather()
 ├── test_context_manager.py           # Comprehensive tests for sync context manager
 ├── test_async_context_manager.py     # Comprehensive tests for async context manager
 ├── test_execute_requirements.py      # Tests for ExecuteQuery context manager
+├── test_3_concurrent.py              # Tests for concurrent queries implementation
 ├── demo_exact_requirements.py        # Minimal demo of ExecuteQuery requirements
+├── demo_3_concurrent.py              # Minimal demo of concurrent queries
 └── users.db                          # SQLite database with sample data
 ```
 
@@ -54,6 +57,15 @@ By working with this project, you will understand:
 - ✅ Built-in error handling and rollback
 - ✅ Result formatting and display utilities
 - ✅ Works with SELECT, INSERT, UPDATE, DELETE operations
+
+### Concurrent Asynchronous Database Queries (`3-concurrent.py`)
+- ✅ `async_fetch_users()` - Fetches all users asynchronously
+- ✅ `async_fetch_older_users()` - Fetches users older than 40 asynchronously
+- ✅ `asyncio.gather()` for concurrent execution of multiple queries
+- ✅ Performance comparison between concurrent and sequential execution
+- ✅ Advanced multi-query concurrent operations
+- ✅ Real-time performance metrics and analysis
+- ✅ Comprehensive error handling for concurrent operations
 
 ## 📋 Prerequisites
 
@@ -175,6 +187,101 @@ async def fetch_user_data(operation_id):
 
 # Run concurrent operations
 results = asyncio.run(concurrent_operations())
+```
+
+## 🚀 Usage Examples
+
+### Concurrent Asynchronous Database Queries
+
+#### Basic Usage
+```python
+import asyncio
+from concurrent_queries import async_fetch_users, async_fetch_older_users, fetch_concurrently
+
+# Run individual async functions
+async def example_individual():
+    users = await async_fetch_users()
+    older_users = await async_fetch_older_users()
+    print(f"Total users: {len(users)}")
+    print(f"Users older than 40: {len(older_users)}")
+
+# Run functions concurrently
+async def example_concurrent():
+    all_users, older_users = await fetch_concurrently()
+    print(f"Concurrent fetch: {len(all_users)} users, {len(older_users)} older")
+
+# Execute with asyncio.run()
+asyncio.run(example_concurrent())
+```
+
+#### Advanced Concurrent Operations
+```python
+import asyncio
+import aiosqlite
+
+async def multiple_concurrent_queries():
+    """Demonstrate multiple different queries running concurrently."""
+    
+    async def count_users():
+        async with aiosqlite.connect("users.db") as db:
+            cursor = await db.execute("SELECT COUNT(*) FROM users")
+            result = await cursor.fetchone()
+            return result[0]
+    
+    async def get_average_age():
+        async with aiosqlite.connect("users.db") as db:
+            cursor = await db.execute("SELECT AVG(age) FROM users")
+            result = await cursor.fetchone()
+            return round(result[0], 2)
+    
+    async def get_age_stats():
+        async with aiosqlite.connect("users.db") as db:
+            cursor = await db.execute("SELECT MIN(age), MAX(age) FROM users")
+            result = await cursor.fetchone()
+            return result
+    
+    # Execute all queries concurrently
+    count, avg_age, (min_age, max_age) = await asyncio.gather(
+        count_users(),
+        get_average_age(),
+        get_age_stats()
+    )
+    
+    print(f"Users: {count}, Avg Age: {avg_age}, Age Range: {min_age}-{max_age}")
+
+# Run advanced example
+asyncio.run(multiple_concurrent_queries())
+```
+
+#### Testing Concurrent Performance
+```python
+# Run the performance demonstration
+python 3-concurrent.py
+
+# Run minimal demonstration
+python demo_3_concurrent.py
+
+# Run comprehensive tests
+python test_3_concurrent.py
+```
+
+### Sample Output for Concurrent Queries
+```
+🚀 CONCURRENT EXECUTION TEST
+============================================================
+🔍 Starting async_fetch_users()...
+🔍 Starting async_fetch_older_users()...
+  📁 Connected to database for fetching all users
+  📁 Connected to database for fetching older users
+  ✅ Fetched 18 total users
+  ✅ Fetched 5 users older than 40
+============================================================
+⚡ Concurrent execution completed in 0.0008 seconds
+
+📊 PERFORMANCE ANALYSIS
+⚡ Concurrent execution time:  0.0008 seconds
+🐌 Sequential execution time:  0.0013 seconds
+🏆 Performance improvement:    1.63x faster with concurrent execution
 ```
 
 ## 🧪 Testing
