@@ -42,7 +42,9 @@ class TestGithubOrgClient(unittest.TestCase):
     def test_public_repos_url(self):
         """Test that _public_repos_url returns the expected URL"""
         # Known payload with repos_url
-        known_payload = {"repos_url": "https://api.github.com/orgs/google/repos"}
+        known_payload = {
+            "repos_url": "https://api.github.com/orgs/google/repos"
+        }
 
         # Use patch as context manager to mock the org property
         with patch.object(
