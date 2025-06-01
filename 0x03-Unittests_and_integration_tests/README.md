@@ -122,7 +122,8 @@ pip install parameterized requests
 - ✅ **Task 1**: Parameterized unit tests for exception scenarios (2 tests)
 - ✅ **Task 2**: Mock HTTP calls for external API testing (2 tests)
 - ✅ **Task 3**: Parameterize and patch with memoization testing (1 test)
-- **Total**: 8 tests passing
+- ✅ **Task 4**: Parameterize and patch as decorators for client testing (2 tests)
+- **Total**: 10 tests passing
 
 ### Task 0: Parameterize a unit test ✅
 
@@ -302,6 +303,85 @@ def test_memoize(self):
 - **Memory vs. CPU Trade-off**: Uses memory to save computation time
 
 **Test Results**: All 8 total test cases pass successfully (7 previous + 1 memoization test).
+
+### Task 4: Parameterize and patch as decorators (Client Testing) ✅
+
+**Objective**: Create unit tests for the `client.GithubOrgClient.org` property using both `@parameterized.expand` and `@patch` decorators to test the client class without making external HTTP calls.
+
+**Client Overview**: 
+The `GithubOrgClient` class provides an interface to interact with GitHub's organization API. The `org` property is decorated with `@memoize`, making it a cached property that fetches organization data from the GitHub API using the `get_json` utility function.
+
+**Implementation**: 
+- Created `TestGithubOrgClient` class inheriting from `unittest.TestCase`
+- Implemented `test_org` method with both decorators:
+  - `@parameterized.expand` for testing multiple organization names
+  - `@patch('client.get_json')` for mocking the HTTP call
+- Tested two organization scenarios:
+  1. `"google"` - Google's GitHub organization
+  2. `"abc"` - A simple test organization name
+
+**Key Features**:
+- **Combined Decorators**: Shows how to use both parameterization and patching together
+- **Property Testing**: Tests memoized properties (accessed without parentheses)
+- **Client Class Testing**: Demonstrates testing of class-based API clients
+- **No External Calls**: Complete isolation from GitHub API using mocking
+
+**Technical Implementation**:
+- Used `@patch('client.get_json')` to mock the utility function import
+- Configured mock return value with realistic GitHub API response structure
+- Verified that `get_json` is called with the correct GitHub API URL format
+- Tested that the property returns the mocked response correctly
+
+**Understanding Memoized Properties**:
+The `@memoize` decorator in `utils.py` converts methods into properties:
+```python
+@memoize
+def org(self) -> Dict:
+    return get_json(self.ORG_URL.format(org=self._org_name))
+```
+This means `client.org` (not `client.org()`) accesses the cached property.
+
+**Code Example**:
+```python
+@parameterized.expand([
+    ("google",),
+    ("abc",),
+])
+@patch('client.get_json')
+def test_org(self, org_name, mock_get_json):
+    """Test that GithubOrgClient.org returns the correct value"""
+    # Mock return value for get_json
+    expected_response = {
+        "name": org_name,
+        "repos_url": f"https://api.github.com/orgs/{org_name}/repos"
+    }
+    mock_get_json.return_value = expected_response
+    
+    # Create an instance of GithubOrgClient
+    client = GithubOrgClient(org_name)
+    
+    # Access the org property
+    result = client.org
+    
+    # Assert that the result is the expected response
+    self.assertEqual(result, expected_response)
+    
+    # Assert that get_json was called once with the correct URL
+    expected_url = f"https://api.github.com/orgs/{org_name}"
+    mock_get_json.assert_called_once_with(expected_url)
+```
+
+**Decorator Stack Explanation**:
+1. `@parameterized.expand` creates separate test methods for each parameter set
+2. `@patch('client.get_json')` injects a mock object as the last method parameter
+3. The test method receives: `(self, org_name, mock_get_json)`
+
+**API URL Testing**:
+- Verifies that the correct GitHub API URL is constructed: `https://api.github.com/orgs/{org_name}`
+- Tests URL formatting for different organization names
+- Ensures proper API endpoint usage without making real requests
+
+**Test Results**: All 10 total test cases pass successfully (8 previous + 2 client tests).
 
 ## Resources
 
