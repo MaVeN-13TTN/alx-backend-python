@@ -1,15 +1,24 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 import uuid
 
 
 class User(AbstractUser):
     """
     Extended User model with additional fields for messaging functionality
+    Inherits: password, first_name, last_name, username, email from AbstractUser
     """
 
     user_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # Explicitly define inherited fields for clarity (these are from AbstractUser)
+    # password - inherited from AbstractUser
+    # first_name - inherited from AbstractUser  
+    # last_name - inherited from AbstractUser
+    
+    # Additional custom fields
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     profile_picture = models.URLField(blank=True, null=True)
     is_online = models.BooleanField(default=False)
@@ -51,7 +60,7 @@ class Conversation(models.Model):
     @property
     def last_message(self):
         """Get the most recent message in this conversation"""
-        return self.messages.order_by("-created_at").first()
+        return self.messages.order_by("-sent_at").first()
 
     class Meta:
         db_table = "conversations"
@@ -77,6 +86,7 @@ class Message(models.Model):
         help_text="Conversation this message belongs to",
     )
     message_body = models.TextField(help_text="Content of the message")
+    sent_at = models.DateTimeField(default=timezone.now, help_text="When the message was sent")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -85,8 +95,8 @@ class Message(models.Model):
 
     class Meta:
         db_table = "messages"
-        ordering = ["-created_at"]
+        ordering = ["-sent_at"]
         indexes = [
-            models.Index(fields=["conversation", "-created_at"]),
-            models.Index(fields=["sender", "-created_at"]),
+            models.Index(fields=["conversation", "-sent_at"]),
+            models.Index(fields=["sender", "-sent_at"]),
         ]
