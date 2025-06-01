@@ -125,7 +125,8 @@ pip install parameterized requests
 - ✅ **Task 4**: Parameterize and patch as decorators for client testing (2 tests)
 - ✅ **Task 5**: Mocking a property for testing dependent properties (1 test)
 - ✅ **Task 6**: More patching - testing complex method interactions (1 test)
-- **Total**: 12 tests passing
+- ✅ **Task 7**: Parameterize static method testing (2 tests)
+- **Total**: 14 tests passing
 
 ### Task 0: Parameterize a unit test ✅
 
@@ -572,6 +573,102 @@ def test_public_repos(self, mock_get_json):
 - **Complex Business Logic**: Ideal for testing methods with multiple external dependencies
 
 **Test Results**: All 12 total test cases pass successfully (11 previous + 1 complex method test).
+
+### Task 7: Parameterize (Static Method Testing) ✅
+
+**Objective**: Test the `client.GithubOrgClient.has_license` static method using parameterized testing to verify license key matching functionality across different scenarios.
+
+**Static Method Overview**: 
+The `has_license` method is a static utility method that checks if a repository has a specific license:
+```python
+@staticmethod
+def has_license(repo: Dict[str, Dict], license_key: str) -> bool:
+    """Static: has_license"""
+    assert license_key is not None, "license_key cannot be None"
+    try:
+        has_license = access_nested_map(repo, ("license", "key")) == license_key
+    except KeyError:
+        return False
+    return has_license
+```
+
+**Method Logic**:
+1. **Input Validation**: Asserts that `license_key` is not `None`
+2. **Nested Access**: Uses `access_nested_map` to safely access `repo["license"]["key"]`
+3. **License Matching**: Compares the repository's license key with the expected license key
+4. **Error Handling**: Returns `False` if a `KeyError` occurs (missing license data)
+
+**Implementation**: 
+- Added `test_has_license` method to `TestGithubOrgClient` class
+- Used `@parameterized.expand` decorator to test multiple scenarios
+- Tested both matching and non-matching license scenarios as specified
+- Each test case includes repository data, license key, and expected result
+
+**Test Scenarios**:
+1. **License Match**: Repository with `"my_license"` matches `"my_license"` → `True`
+2. **License Mismatch**: Repository with `"other_license"` doesn't match `"my_license"` → `False`
+
+**Key Features**:
+- **Static Method Testing**: Demonstrates testing class static methods directly
+- **Parameterized Testing**: Uses `@parameterized.expand` for multiple test cases
+- **Boolean Result Testing**: Tests methods that return boolean values
+- **Edge Case Coverage**: Tests both positive and negative scenarios
+
+**Technical Implementation**:
+- **Direct Method Call**: Called `GithubOrgClient.has_license()` directly as a static method
+- **No Instance Required**: Static methods don't need class instantiation
+- **Simple Assertions**: Used `assertEqual` to verify boolean return values
+- **Realistic Test Data**: Used dictionary structures that match GitHub API format
+
+**Parameterization Pattern**:
+```python
+@parameterized.expand([
+    ({"license": {"key": "my_license"}}, "my_license", True),
+    ({"license": {"key": "other_license"}}, "my_license", False),
+])
+def test_has_license(self, repo, license_key, expected):
+    """Test that has_license returns expected result"""
+    result = GithubOrgClient.has_license(repo, license_key)
+    self.assertEqual(result, expected)
+```
+
+**Code Example**:
+```python
+@parameterized.expand([
+    ({"license": {"key": "my_license"}}, "my_license", True),
+    ({"license": {"key": "other_license"}}, "my_license", False),
+])
+def test_has_license(self, repo, license_key, expected):
+    """Test that has_license returns expected result"""
+    result = GithubOrgClient.has_license(repo, license_key)
+    self.assertEqual(result, expected)
+```
+
+**Static Method Testing Benefits**:
+- **Isolation**: No dependencies on instance state or external resources
+- **Fast Execution**: Direct method calls without setup overhead
+- **Pure Logic Testing**: Focus on algorithm and business logic verification
+- **Predictable Results**: Deterministic output based on input parameters
+
+**Testing Strategy**:
+- **Positive Testing**: Verify correct behavior when license matches
+- **Negative Testing**: Verify correct behavior when license doesn't match
+- **Input Validation**: Ensure method handles different input structures correctly
+- **Return Value Verification**: Confirm boolean return values are accurate
+
+**Real-world Applications**:
+- **License Compliance**: Common in open-source project management
+- **Repository Filtering**: Used in tools that filter repositories by license type
+- **Compliance Auditing**: Essential for enterprise software compliance checks
+- **API Client Utilities**: Typical utility method pattern in API client libraries
+
+**Parameterization Advantages**:
+- **Code Reuse**: Single test method handles multiple scenarios
+- **Maintainability**: Easy to add new test cases by expanding the parameter list
+- **Clear Documentation**: Parameter names clearly indicate what's being tested
+- **Comprehensive Coverage**: Ensures multiple edge cases are tested systematically
+
+**Test Results**: All 14 total test cases pass successfully (12 previous + 2 static method tests).
 
 ## Resources
 
