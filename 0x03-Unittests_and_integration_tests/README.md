@@ -45,6 +45,12 @@ By the end of this project, you should be able to explain:
 - Use `@parameterized.expand` decorator to reduce code duplication
 - Test multiple scenarios efficiently
 
+#### Exception Testing
+- Test that functions raise expected exceptions
+- Use `assertRaises` context manager to capture exceptions
+- Verify both exception type and error messages
+- Test edge cases and error conditions
+
 #### Fixtures
 - Set up test data and environment before tests run
 - Clean up resources after tests complete
@@ -100,6 +106,11 @@ pip install parameterized requests
 
 ## Tasks
 
+### Project Progress Overview
+- ✅ **Task 0**: Parameterized unit tests for successful scenarios (3 tests)
+- ✅ **Task 1**: Parameterized unit tests for exception scenarios (2 tests)
+- **Total**: 5 tests passing
+
 ### Task 0: Parameterize a unit test ✅
 
 **Objective**: Create parameterized unit tests for the `utils.access_nested_map` function.
@@ -131,6 +142,39 @@ def test_access_nested_map(self, nested_map, path, expected):
 ```
 
 **Test Results**: All 3 parameterized test cases pass successfully.
+
+### Task 1: Parameterize a unit test (Exception Testing) ✅
+
+**Objective**: Create parameterized unit tests for exception scenarios in `utils.access_nested_map` function.
+
+**Implementation**: 
+- Added `test_access_nested_map_exception` method to `TestAccessNestedMap` class
+- Used `@parameterized.expand` decorator for exception test cases
+- Implemented `assertRaises` context manager to verify KeyError exceptions
+- Tested two exception scenarios:
+  1. `nested_map={}, path=("a",)` → expected KeyError: `'a'`
+  2. `nested_map={"a": 1}, path=("a", "b")` → expected KeyError: `'b'`
+
+**Key Features**:
+- Exception testing with `assertRaises` context manager
+- Verification of both exception type and error message
+- Parameterized testing for multiple exception scenarios
+- Proper error message validation using `str(context.exception)`
+
+**Code Example**:
+```python
+@parameterized.expand([
+    ({}, ("a",), "a"),
+    ({"a": 1}, ("a", "b"), "b"),
+])
+def test_access_nested_map_exception(self, nested_map, path, expected_key):
+    """Test that access_nested_map raises KeyError with expected message."""
+    with self.assertRaises(KeyError) as context:
+        access_nested_map(nested_map, path)
+    self.assertEqual(str(context.exception), f"'{expected_key}'")
+```
+
+**Test Results**: All 5 total test cases pass successfully (3 success + 2 exception cases).
 
 ## Resources
 
