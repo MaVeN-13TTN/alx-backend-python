@@ -54,6 +54,12 @@ By the end of this project, you should be able to explain:
 - Verify both exception type and error messages
 - Test edge cases and error conditions
 
+#### Decorator Testing
+- Test decorator behavior and side effects
+- Use `patch.object()` for mocking methods on specific classes
+- Verify optimization patterns like memoization and caching
+- Test that decorators preserve function behavior while adding features
+
 #### Fixtures
 - Set up test data and environment before tests run
 - Clean up resources after tests complete
@@ -115,7 +121,8 @@ pip install parameterized requests
 - ✅ **Task 0**: Parameterized unit tests for successful scenarios (3 tests)
 - ✅ **Task 1**: Parameterized unit tests for exception scenarios (2 tests)
 - ✅ **Task 2**: Mock HTTP calls for external API testing (2 tests)
-- **Total**: 7 tests passing
+- ✅ **Task 3**: Parameterize and patch with memoization testing (1 test)
+- **Total**: 8 tests passing
 
 ### Task 0: Parameterize a unit test ✅
 
@@ -232,6 +239,70 @@ def test_get_json(self, test_url, test_payload, mock_get):
 
 **Test Results**: All 7 total test cases pass successfully (5 previous + 2 HTTP mocking tests).
 
+### Task 3: Parameterize and patch (Memoization Testing) ✅
+
+**Objective**: Test the `utils.memoize` decorator to ensure it properly caches method calls and avoids redundant executions.
+
+**Memoization Concept**: 
+Memoization is an optimization technique that stores the results of expensive function calls and returns the cached result when the same inputs occur again. The `utils.memoize` decorator converts a method into a cached property.
+
+**Implementation**: 
+- Created `TestMemoize` class inheriting from `unittest.TestCase`
+- Implemented `test_memoize` method that defines a nested `TestClass` with:
+  - `a_method()`: Returns 42 (the method to be cached)
+  - `a_property()`: Decorated with `@memoize`, calls `a_method()`
+- Used `patch.object()` to mock the `a_method` for call verification
+- Tested that multiple property accesses return correct results but method is called only once
+
+**Key Features**:
+- **Caching Verification**: Confirms that repeated calls return cached values
+- **Call Count Testing**: Uses `assert_called_once()` to verify optimization
+- **Method Patching**: Demonstrates `patch.object()` for instance method mocking
+- **Decorator Testing**: Shows how to test decorators and their behavior
+
+**Technical Implementation**:
+- Used `patch.object(TestClass, 'a_method')` to mock the underlying method
+- Called the memoized property twice to test caching behavior
+- Verified both return values and call count with separate assertions
+- Demonstrated that memoization converts methods to cached properties
+
+**Code Example**:
+```python
+def test_memoize(self):
+    """Test that memoize decorator caches method calls correctly."""
+    
+    class TestClass:
+        def a_method(self):
+            return 42
+
+        @memoize
+        def a_property(self):
+            return self.a_method()
+
+    # Create an instance and patch the a_method
+    with patch.object(TestClass, 'a_method', return_value=42) as mock_method:
+        test_instance = TestClass()
+        
+        # Call a_property twice
+        result1 = test_instance.a_property
+        result2 = test_instance.a_property
+        
+        # Assert both calls return the correct result
+        self.assertEqual(result1, 42)
+        self.assertEqual(result2, 42)
+        
+        # Assert a_method was called only once due to memoization
+        mock_method.assert_called_once()
+```
+
+**Memoization Benefits**:
+- **Performance Optimization**: Avoids repeated expensive computations
+- **Caching Strategy**: Automatically stores results on first access
+- **Property Conversion**: Makes methods behave like cached attributes
+- **Memory vs. CPU Trade-off**: Uses memory to save computation time
+
+**Test Results**: All 8 total test cases pass successfully (7 previous + 1 memoization test).
+
 ## Resources
 
 - [unittest — Unit testing framework](https://docs.python.org/3/library/unittest.html)
@@ -249,7 +320,9 @@ def test_get_json(self, test_url, test_payload, mock_get):
 5. **Mock External Dependencies**: Isolate units under test from external systems
 6. **Verify Mock Interactions**: Always assert that mocks are called as expected
 7. **Avoid Real Network Calls**: Use mocking to make tests fast and reliable
-8. **Maintain Test Documentation**: Document complex test scenarios and expectations
+8. **Test Decorator Behavior**: Verify that decorators work correctly and preserve functionality
+9. **Use patch.object for Instance Methods**: Mock specific methods on classes when needed
+10. **Maintain Test Documentation**: Document complex test scenarios and expectations
 
 ## Author
 
