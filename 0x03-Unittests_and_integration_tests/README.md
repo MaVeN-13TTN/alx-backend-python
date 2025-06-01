@@ -2,7 +2,9 @@
 
 ## Overview
 
-This project focuses on implementing comprehensive unit tests and integration tests for Python applications. The main objectives are to understand the differences between unit and integration testing, learn common testing patterns, and implement robust test suites using Python's unittest framework.
+This project focuses on implementing comprehensive unit tests and integration tests for Python applications. The main objectives are to understand the differences between unit and integration testing, learn common testing patterns (mocking, parametrization, fixtures), and implement robust test suites using Python's unittest framework.
+
+The project covers advanced testing concepts including HTTP mocking, decorator testing, property mocking, static method testing, and integration test setup with class-level fixtures. All implementations follow PEP 8 style guidelines and demonstrate real-world testing scenarios.
 
 ## Learning Objectives
 
@@ -126,7 +128,8 @@ pip install parameterized requests
 - ✅ **Task 5**: Mocking a property for testing dependent properties (1 test)
 - ✅ **Task 6**: More patching - testing complex method interactions (1 test)
 - ✅ **Task 7**: Parameterize static method testing (2 tests)
-- **Total**: 14 tests passing
+- ✅ **Task 8**: Integration test fixtures with class-level setup (2 tests)
+- **Total**: 16 tests passing
 
 ### Task 0: Parameterize a unit test ✅
 
@@ -670,6 +673,84 @@ def test_has_license(self, repo, license_key, expected):
 
 **Test Results**: All 14 total test cases pass successfully (12 previous + 2 static method tests).
 
+### Task 8: Integration Test Fixtures (COMPLETED ✅)
+
+**Objective**: Create integration tests for `GithubOrgClient.public_repos` method that only mock external HTTP requests.
+
+**Implementation Details**:
+
+```python
+@parameterized_class(
+    ("org_payload", "repos_payload", "expected_repos", "apache2_repos"),
+    TEST_PAYLOAD
+)
+class TestIntegrationGithubOrgClient(unittest.TestCase):
+    """Integration test class for GithubOrgClient"""
+
+    @classmethod
+    def setUpClass(cls):
+        """Set up class fixtures before running tests"""
+        def side_effect(url):
+            """Mock side effect for requests.get"""
+            mock_response = Mock()
+            
+            if url == "https://api.github.com/orgs/google":
+                mock_response.json.return_value = cls.org_payload
+            elif url == cls.org_payload.get("repos_url"):
+                mock_response.json.return_value = cls.repos_payload
+            else:
+                mock_response.json.return_value = {}
+                
+            return mock_response
+
+        cls.get_patcher = patch('requests.get', side_effect=side_effect)
+        cls.get_patcher.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        """Tear down class fixtures after running tests"""
+        cls.get_patcher.stop()
+```
+
+**Key Concepts Demonstrated**:
+
+1. **@parameterized_class**: Decorates the entire test class with fixture data
+2. **setUpClass/tearDownClass**: Class-level setup and cleanup methods
+3. **Integration Testing**: Only mocks external HTTP requests, tests full workflow
+4. **Fixture Management**: Uses real test data from `fixtures.py`
+5. **Smart Mock Side Effects**: Routes different URLs to appropriate fixture data
+
+**Testing Strategy**:
+- **Minimal Mocking**: Only `requests.get` is mocked, everything else runs with real code
+- **Real Data Flow**: Uses actual fixture data from `TEST_PAYLOAD`
+- **End-to-End Testing**: Tests complete workflow from HTTP request to final result
+- **URL-Based Routing**: Mock intelligently returns appropriate data based on request URL
+
+**Integration vs Unit Testing**:
+- **Unit Tests**: Mock everything external to the function being tested
+- **Integration Tests**: Mock only the lowest-level external calls (HTTP, DB, file I/O)
+- **Coverage**: Integration tests verify that different modules work together correctly
+
+**Fixture Components**:
+- **org_payload**: Organization metadata with repos URL
+- **repos_payload**: Complete list of repository data from GitHub API
+- **expected_repos**: Expected list of all repository names
+- **apache2_repos**: Expected list of repositories with Apache 2.0 license
+
+**Real-world Applications**:
+- **API Client Testing**: Common pattern for testing REST API clients
+- **External Service Integration**: Testing interactions with third-party services
+- **Configuration Management**: Testing different configurations with parameterized classes
+- **CI/CD Pipeline Testing**: Running same tests with different environment configurations
+
+**Advantages of Integration Testing**:
+- **Real Workflow Validation**: Ensures complete user scenarios work correctly
+- **Interface Testing**: Verifies that different modules integrate properly
+- **Configuration Testing**: Tests real configuration and setup scenarios
+- **Regression Prevention**: Catches issues that unit tests might miss
+
+**Test Results**: All 16 total test cases pass successfully (14 previous + 2 integration tests).
+
 ## Resources
 
 - [unittest — Unit testing framework](https://docs.python.org/3/library/unittest.html)
@@ -691,6 +772,21 @@ def test_has_license(self, repo, license_key, expected):
 8. **Test Decorator Behavior**: Verify that decorators work correctly and preserve functionality
 9. **Use patch.object for Instance Methods**: Mock specific methods on classes when needed
 10. **Maintain Test Documentation**: Document complex test scenarios and expectations
+11. **Integration vs Unit Testing**: Choose the right level of mocking based on test goals
+12. **Class-level Setup**: Use setUpClass/tearDownClass for expensive setup operations
+
+## Project Summary
+
+This project successfully demonstrates advanced Python testing concepts through 8 comprehensive tasks:
+
+- **Unit Testing**: 14 focused unit tests covering utility functions, HTTP clients, and business logic
+- **Integration Testing**: 2 end-to-end tests with minimal mocking for real workflow validation
+- **Mocking Strategies**: HTTP requests, properties, methods, and decorator behavior
+- **Parameterization**: Efficient testing of multiple scenarios with single test methods
+- **Fixtures**: Class-level and method-level test data management
+- **Code Quality**: PEP 8 compliant code with comprehensive documentation
+
+**Final Test Results**: 16/16 tests passing across all categories with 100% success rate.
 
 ## Author
 
