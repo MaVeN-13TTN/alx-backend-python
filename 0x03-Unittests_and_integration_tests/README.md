@@ -124,7 +124,8 @@ pip install parameterized requests
 - ✅ **Task 3**: Parameterize and patch with memoization testing (1 test)
 - ✅ **Task 4**: Parameterize and patch as decorators for client testing (2 tests)
 - ✅ **Task 5**: Mocking a property for testing dependent properties (1 test)
-- **Total**: 11 tests passing
+- ✅ **Task 6**: More patching - testing complex method interactions (1 test)
+- **Total**: 12 tests passing
 
 ### Task 0: Parameterize a unit test ✅
 
@@ -460,6 +461,117 @@ def test_public_repos_url(self):
 - **Reliability**: Ensures properties work correctly without external dependencies
 
 **Test Results**: All 11 total test cases pass successfully (10 previous + 1 property test).
+
+### Task 6: More patching (Complex Method Testing) ✅
+
+**Objective**: Test the `client.GithubOrgClient.public_repos` method by combining decorator and context manager patching patterns. This demonstrates testing methods that have multiple dependencies and complex internal logic.
+
+**Method Overview**: 
+The `public_repos` method retrieves a list of repository names from GitHub's API:
+```python
+def public_repos(self, license: str = None) -> List[str]:
+    """Public repos"""
+    json_payload = self.repos_payload  # Calls get_json internally
+    public_repos = [
+        repo["name"]
+        for repo in json_payload
+        if license is None or self.has_license(repo, license)
+    ]
+    return public_repos
+```
+
+**Dependencies Chain**:
+1. `public_repos()` → calls `self.repos_payload`
+2. `repos_payload` (memoized) → calls `get_json(self._public_repos_url)`
+3. `_public_repos_url` (property) → returns URL from `self.org["repos_url"]`
+
+**Implementation**: 
+- Added `test_public_repos` method to `TestGithubOrgClient` class
+- Used `@patch("client.get_json")` decorator to mock the HTTP call
+- Used `patch.object()` as context manager to mock `_public_repos_url` property
+- Tested that `public_repos` returns expected list of repository names
+- Verified both mocks were called exactly once
+
+**Key Features**:
+- **Mixed Mocking Patterns**: Combines decorator and context manager approaches
+- **Complex Dependency Testing**: Mocks multiple levels of the dependency chain
+- **List Processing Testing**: Verifies data transformation from API payload to repo names
+- **Call Verification**: Ensures both mocked dependencies are invoked properly
+
+**Technical Implementation**:
+- **Decorator Mocking**: Used `@patch("client.get_json")` to mock the HTTP layer
+- **Context Manager Mocking**: Used `patch.object()` to mock the property dependency
+- **Mock Payload Design**: Created realistic GitHub API response structure
+- **Assertion Strategy**: Tested both return value and mock interaction patterns
+
+**Mock Payload Structure**:
+```python
+test_payload = [
+    {"name": "google/repo1", "license": {"key": "apache-2.0"}},
+    {"name": "google/repo2", "license": {"key": "mit"}},
+    {"name": "google/repo3", "license": None}
+]
+```
+
+**Code Example**:
+```python
+@patch("client.get_json")
+def test_public_repos(self, mock_get_json):
+    """Test that public_repos returns expected list of repos"""
+    # Mock payload for get_json - list of repositories
+    test_payload = [
+        {"name": "google/repo1", "license": {"key": "apache-2.0"}},
+        {"name": "google/repo2", "license": {"key": "mit"}},
+        {"name": "google/repo3", "license": None}
+    ]
+    mock_get_json.return_value = test_payload
+
+    # Use patch as context manager to mock _public_repos_url
+    with patch.object(
+        GithubOrgClient, "_public_repos_url", new_callable=PropertyMock
+    ) as mock_public_repos_url:
+        mock_public_repos_url.return_value = (
+            "https://api.github.com/orgs/google/repos"
+        )
+
+        # Create client instance
+        client = GithubOrgClient("google")
+
+        # Call public_repos method
+        result = client.public_repos()
+
+        # Expected list of repo names
+        expected_repos = ["google/repo1", "google/repo2", "google/repo3"]
+        
+        # Assert that the result matches expected repos
+        self.assertEqual(result, expected_repos)
+
+        # Verify that _public_repos_url property was accessed once
+        mock_public_repos_url.assert_called_once()
+
+    # Verify that get_json was called once
+    mock_get_json.assert_called_once()
+```
+
+**Advanced Mocking Concepts**:
+- **Layered Mocking**: Mock different levels of the call stack independently
+- **Decorator vs Context Manager**: Choose the right pattern based on scope needs
+- **Property vs Method Mocking**: Use `PropertyMock` for properties, `Mock` for methods
+- **Call Count Verification**: Ensure mocks are invoked the expected number of times
+
+**Testing Strategy Benefits**:
+- **Isolated Testing**: Each method is tested independently of its dependencies
+- **Fast Execution**: No actual HTTP calls or file I/O operations
+- **Predictable Results**: Controlled mock responses ensure consistent test outcomes
+- **Comprehensive Coverage**: Tests both success scenarios and mock interaction patterns
+
+**Real-world Applications**:
+- **API Client Testing**: Common pattern for testing services that interact with external APIs
+- **Database Layer Testing**: Similar approach for testing data access layers
+- **Service Integration Testing**: Useful for testing service-to-service communications
+- **Complex Business Logic**: Ideal for testing methods with multiple external dependencies
+
+**Test Results**: All 12 total test cases pass successfully (11 previous + 1 complex method test).
 
 ## Resources
 
