@@ -1,8 +1,9 @@
 from django.shortcuts import render
-from rest_framework import viewsets, status, permissions
+from rest_framework import viewsets, status, permissions, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
+from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, Count, Max
 from django.shortcuts import get_object_or_404
 from .models import User, Conversation, Message
@@ -38,6 +39,14 @@ class UserViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardResultsSetPagination
     lookup_field = "user_id"
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+    filterset_fields = ["is_online", "created_at"]
+    search_fields = ["username", "email", "first_name", "last_name"]
+    ordering_fields = ["created_at", "last_seen", "username"]
 
     def get_serializer_class(self):
         """
@@ -77,6 +86,14 @@ class ConversationViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardResultsSetPagination
     lookup_field = "conversation_id"
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+    filterset_fields = ["created_at", "updated_at"]
+    search_fields = ["participants__username", "participants__email"]
+    ordering_fields = ["created_at", "updated_at", "last_message_time"]
 
     def get_queryset(self):
         """
@@ -227,6 +244,14 @@ class MessageViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardResultsSetPagination
     lookup_field = "message_id"
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+    filterset_fields = ["conversation", "sender", "sent_at", "created_at"]
+    search_fields = ["message_body", "sender__username"]
+    ordering_fields = ["sent_at", "created_at", "updated_at"]
 
     def get_queryset(self):
         """
