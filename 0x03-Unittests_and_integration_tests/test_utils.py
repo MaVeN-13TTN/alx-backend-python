@@ -27,7 +27,8 @@ class TestAccessNestedMap(unittest.TestCase):
         ]
     )
     def test_access_nested_map_exception(self, nested_map, path, expected_key):
-        """Test that access_nested_map raises KeyError with expected message."""
+        """Test that access_nested_map raises KeyError with expected
+        message."""
         with self.assertRaises(KeyError) as context:
             access_nested_map(nested_map, path)
         self.assertEqual(str(context.exception), f"'{expected_key}'")
@@ -44,7 +45,8 @@ class TestGetJson(unittest.TestCase):
     )
     @patch("utils.requests.get")
     def test_get_json(self, test_url, test_payload, mock_get):
-        """Test that get_json returns expected result and makes correct HTTP call."""
+        """Test that get_json returns expected result and makes correct HTTP
+        call."""
         # Configure mock response
         mock_response = Mock()
         mock_response.json.return_value = test_payload
