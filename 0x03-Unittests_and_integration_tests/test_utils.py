@@ -77,7 +77,8 @@ class TestMemoize(unittest.TestCase):
                 return self.a_method()
 
         # Create an instance and patch the a_method
-        with patch.object(TestClass, "a_method", return_value=42) as mock_method:
+        with patch.object(TestClass, "a_method",
+                          return_value=42) as mock_method:
             test_instance = TestClass()
 
             # Call a_property twice
