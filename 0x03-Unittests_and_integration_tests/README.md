@@ -39,6 +39,9 @@ By the end of this project, you should be able to explain:
 - Replace external dependencies with controlled test doubles
 - Isolate the code under test from external systems
 - Use `unittest.mock` for creating mock objects
+- **HTTP Mocking**: Use `@patch` decorator to mock network calls
+- **Mock Verification**: Validate mock calls with `assert_called_once_with()`
+- **Response Mocking**: Create mock response objects with configurable return values
 
 #### Parametrization
 - Run the same test with different input values
@@ -104,12 +107,15 @@ Install required packages:
 pip install parameterized requests
 ```
 
+**Note**: `unittest` and `unittest.mock` are part of Python's standard library and don't need to be installed separately.
+
 ## Tasks
 
 ### Project Progress Overview
 - ✅ **Task 0**: Parameterized unit tests for successful scenarios (3 tests)
 - ✅ **Task 1**: Parameterized unit tests for exception scenarios (2 tests)
-- **Total**: 5 tests passing
+- ✅ **Task 2**: Mock HTTP calls for external API testing (2 tests)
+- **Total**: 7 tests passing
 
 ### Task 0: Parameterize a unit test ✅
 
@@ -176,6 +182,56 @@ def test_access_nested_map_exception(self, nested_map, path, expected_key):
 
 **Test Results**: All 5 total test cases pass successfully (3 success + 2 exception cases).
 
+### Task 2: Mock HTTP calls ✅
+
+**Objective**: Create unit tests for `utils.get_json` function using HTTP mocking to avoid external calls.
+
+**Implementation**: 
+- Created `TestGetJson` class inheriting from `unittest.TestCase`
+- Implemented `test_get_json` method with `@parameterized.expand` and `@patch` decorators
+- Used `unittest.mock.patch` to mock `requests.get` and avoid actual HTTP calls
+- Tested two HTTP scenarios:
+  1. `test_url="http://example.com", test_payload={"payload": True}`
+  2. `test_url="http://holberton.io", test_payload={"payload": False}`
+
+**Key Features**:
+- **HTTP Mocking**: Complete isolation from external dependencies
+- **Mock Verification**: Validates that `requests.get` was called exactly once per test
+- **Return Value Testing**: Confirms function returns expected JSON payload
+- **No Network Calls**: Tests run fast and reliably without internet dependency
+
+**Technical Implementation**:
+- Used `@patch('utils.requests.get')` to intercept HTTP calls
+- Created `Mock` response objects with configurable `json()` method
+- Verified mock call count and arguments using `assert_called_once_with()`
+- Combined parameterization with mocking for efficient test coverage
+
+**Code Example**:
+```python
+@parameterized.expand([
+    ("http://example.com", {"payload": True}),
+    ("http://holberton.io", {"payload": False}),
+])
+@patch('utils.requests.get')
+def test_get_json(self, test_url, test_payload, mock_get):
+    """Test that get_json returns expected result and makes correct HTTP call."""
+    # Configure mock response
+    mock_response = Mock()
+    mock_response.json.return_value = test_payload
+    mock_get.return_value = mock_response
+    
+    # Call the function
+    result = get_json(test_url)
+    
+    # Assert that requests.get was called once with the correct URL
+    mock_get.assert_called_once_with(test_url)
+    
+    # Assert that the result matches the expected payload
+    self.assertEqual(result, test_payload)
+```
+
+**Test Results**: All 7 total test cases pass successfully (5 previous + 2 HTTP mocking tests).
+
 ## Resources
 
 - [unittest — Unit testing framework](https://docs.python.org/3/library/unittest.html)
@@ -191,7 +247,9 @@ def test_access_nested_map_exception(self, nested_map, path, expected_key):
 3. **Keep Tests Independent**: Each test should be able to run in isolation
 4. **Use Descriptive Assertions**: Choose the most specific assertion method
 5. **Mock External Dependencies**: Isolate units under test from external systems
-6. **Maintain Test Documentation**: Document complex test scenarios and expectations
+6. **Verify Mock Interactions**: Always assert that mocks are called as expected
+7. **Avoid Real Network Calls**: Use mocking to make tests fast and reliable
+8. **Maintain Test Documentation**: Document complex test scenarios and expectations
 
 ## Author
 
