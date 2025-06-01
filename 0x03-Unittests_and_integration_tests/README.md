@@ -123,7 +123,8 @@ pip install parameterized requests
 - ✅ **Task 2**: Mock HTTP calls for external API testing (2 tests)
 - ✅ **Task 3**: Parameterize and patch with memoization testing (1 test)
 - ✅ **Task 4**: Parameterize and patch as decorators for client testing (2 tests)
-- **Total**: 10 tests passing
+- ✅ **Task 5**: Mocking a property for testing dependent properties (1 test)
+- **Total**: 11 tests passing
 
 ### Task 0: Parameterize a unit test ✅
 
@@ -383,12 +384,90 @@ def test_org(self, org_name, mock_get_json):
 
 **Test Results**: All 10 total test cases pass successfully (8 previous + 2 client tests).
 
+### Task 5: Mocking a property (Property Testing) ✅
+
+**Objective**: Test the `client.GithubOrgClient._public_repos_url` property by mocking the `org` property it depends on. This demonstrates how to test properties that rely on other memoized properties.
+
+**Property Dependencies**: 
+The `_public_repos_url` property depends on the `org` property:
+```python
+@property
+def _public_repos_url(self) -> str:
+    """Public repos URL"""
+    return self.org["repos_url"]
+```
+
+**Implementation**: 
+- Added `test_public_repos_url` method to `TestGithubOrgClient` class
+- Used `patch.object()` as a context manager to mock the `org` property
+- Used `PropertyMock` to properly mock a property (not a regular method)
+- Tested that `_public_repos_url` returns the expected URL from the mocked payload
+
+**Key Features**:
+- **Property Mocking**: Demonstrates using `PropertyMock` for mocking properties
+- **Context Manager Usage**: Shows `patch.object()` as context manager instead of decorator
+- **Dependency Isolation**: Tests one property by mocking its dependencies
+- **Mock Verification**: Confirms that the mocked property was accessed
+
+**Technical Implementation**:
+- Used `patch.object(GithubOrgClient, 'org', new_callable=PropertyMock)` to mock the property
+- Created a known payload with the `repos_url` field
+- Verified that the `_public_repos_url` property returns the correct URL
+- Confirmed that the `org` property was accessed during the test
+
+**Property Mocking Concepts**:
+- **PropertyMock vs Mock**: Use `PropertyMock` for properties, `Mock` for methods
+- **new_callable Parameter**: Tells patch to use `PropertyMock` instead of default `Mock`
+- **Context Manager Pattern**: Allows fine-grained control over mock lifecycle
+- **Property Access Testing**: Verifies that dependent properties work correctly
+
+**Code Example**:
+```python
+def test_public_repos_url(self):
+    """Test that _public_repos_url returns the expected URL"""
+    # Known payload with repos_url
+    known_payload = {
+        "repos_url": "https://api.github.com/orgs/google/repos"
+    }
+    
+    # Use patch as context manager to mock the org property
+    with patch.object(
+        GithubOrgClient, 'org', new_callable=PropertyMock
+    ) as mock_org:
+        mock_org.return_value = known_payload
+        
+        # Create client instance
+        client = GithubOrgClient("google")
+        
+        # Test that _public_repos_url returns the expected URL
+        result = client._public_repos_url
+        self.assertEqual(result, known_payload["repos_url"])
+        
+        # Verify that org property was accessed
+        mock_org.assert_called_once()
+```
+
+**Mocking Patterns Demonstrated**:
+- **Property Chain Testing**: How to test properties that depend on other properties
+- **Context Manager Mocking**: Using `with patch.object()` for controlled scope
+- **PropertyMock Usage**: Specific mock type for testing property access
+- **Isolation Testing**: Testing individual components by mocking dependencies
+
+**Why This Matters**:
+- **Real-world Pattern**: Many properties depend on other properties or methods
+- **Testability**: Shows how to test complex property chains in isolation
+- **Performance**: Avoids expensive operations when testing dependent properties
+- **Reliability**: Ensures properties work correctly without external dependencies
+
+**Test Results**: All 11 total test cases pass successfully (10 previous + 1 property test).
+
 ## Resources
 
 - [unittest — Unit testing framework](https://docs.python.org/3/library/unittest.html)
 - [unittest.mock — mock object library](https://docs.python.org/3/library/unittest.mock.html)
 - [parameterized](https://pypi.org/project/parameterized/)
 - [How to mock a readonly property with mock?](https://stackoverflow.com/questions/17883247/how-to-mock-a-readonly-property-with-mock)
+- [PropertyMock — Mock object for properties](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.PropertyMock)
 - [Memoization](https://en.wikipedia.org/wiki/Memoization)
 
 ## Best Practices
