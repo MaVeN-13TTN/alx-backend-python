@@ -24,6 +24,8 @@ from .permissions import (
     IsMessageSenderOrParticipant,
     CanManageConversationParticipants,
 )
+from .pagination import MessagePagination, ConversationPagination, StandardPagination
+from .filters import MessageFilter, ConversationFilter, UserFilter
 
 
 class StandardResultsSetPagination(PageNumberPagination):
@@ -45,14 +47,14 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated, UserPermission]
-    pagination_class = StandardResultsSetPagination
+    pagination_class = StandardPagination
     lookup_field = "user_id"
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
         filters.OrderingFilter,
     ]
-    filterset_fields = ["is_online", "created_at"]
+    filterset_class = UserFilter
     search_fields = ["username", "email", "first_name", "last_name"]
     ordering_fields = ["created_at", "last_seen", "username"]
 
@@ -106,14 +108,14 @@ class ConversationViewSet(viewsets.ModelViewSet):
     """
 
     permission_classes = [permissions.IsAuthenticated, ConversationPermission]
-    pagination_class = StandardResultsSetPagination
+    pagination_class = ConversationPagination
     lookup_field = "conversation_id"
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
         filters.OrderingFilter,
     ]
-    filterset_fields = ["created_at", "updated_at"]
+    filterset_class = ConversationFilter
     search_fields = ["participants__username", "participants__email"]
     ordering_fields = ["created_at", "updated_at", "last_message_time"]
 
@@ -271,14 +273,14 @@ class MessageViewSet(viewsets.ModelViewSet):
 
     serializer_class = MessageSerializer
     permission_classes = [permissions.IsAuthenticated, MessagePermission]
-    pagination_class = StandardResultsSetPagination
+    pagination_class = MessagePagination
     lookup_field = "message_id"
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
         filters.OrderingFilter,
     ]
-    filterset_fields = ["conversation", "sender", "sent_at", "created_at"]
+    filterset_class = MessageFilter
     search_fields = ["message_body", "sender__username"]
     ordering_fields = ["sent_at", "created_at", "updated_at"]
 

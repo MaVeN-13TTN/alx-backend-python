@@ -296,4 +296,173 @@ curl -X GET http://127.0.0.1:8000/api/auth/profile/ \
   -H "Authorization: Bearer <access-token>"
 ```
 
-This `README.md` provides a consolidated summary of the project's documentation.
+## 📄 Pagination and Filtering
+
+### Pagination Implementation
+
+The messaging app implements comprehensive pagination across all endpoints:
+
+#### Message Pagination
+- **Default page size**: 20 messages per page (as required)
+- **Configurable page size**: Use `?page_size=N` parameter (max 100)
+- **Custom pagination class**: `MessagePagination` in `chats/pagination.py`
+
+```bash
+# Default pagination (20 per page)
+GET /api/messages/
+
+# Custom page size
+GET /api/messages/?page_size=10
+
+# Navigate pages
+GET /api/messages/?page=2
+```
+
+#### Pagination Response Format
+```json
+{
+    "count": 50,
+    "next": "http://localhost:8000/api/messages/?page=3",
+    "previous": "http://localhost:8000/api/messages/?page=1",
+    "page_size": 20,
+    "total_pages": 3,
+    "current_page": 2,
+    "results": [...]
+}
+```
+
+### Filtering Implementation
+
+#### MessageFilter - Advanced Message Filtering
+
+The `MessageFilter` class provides comprehensive filtering options:
+
+**Filter by Sender:**
+```bash
+# Filter by sender user ID
+GET /api/messages/?sender=fd52863a-9f0a-4678-b674-025b308a7471
+
+# Filter by sender username (case-insensitive)
+GET /api/messages/?sender_username=testuser
+```
+
+**Filter by Content:**
+```bash
+# Search message content (case-insensitive)
+GET /api/messages/?message_body=hello
+```
+
+**Filter by Time Range:**
+```bash
+# Messages sent after specific date/time
+GET /api/messages/?sent_at_after=2025-06-08T10:00:00Z
+
+# Messages sent before specific date/time  
+GET /api/messages/?sent_at_before=2025-06-08T18:00:00Z
+
+# Messages sent on specific date
+GET /api/messages/?sent_date=2025-06-08
+
+# Date range filtering
+GET /api/messages/?sent_date_after=2025-06-01&sent_date_before=2025-06-10
+```
+
+**Filter by Conversation:**
+```bash
+# Messages from specific conversation
+GET /api/messages/?conversation=conversation-id
+
+# Messages from conversations with specific participant
+GET /api/messages/?conversation_participant=user-id
+```
+
+#### ConversationFilter - Conversation Filtering
+
+**Filter by Participants:**
+```bash
+# Conversations including specific user
+GET /api/conversations/?participant=user-id
+
+# Filter by participant username
+GET /api/conversations/?participant_username=alice
+```
+
+**Filter by Time:**
+```bash
+# Conversations created after date
+GET /api/conversations/?created_after=2025-06-01
+
+# Conversations with recent activity
+GET /api/conversations/?last_message_after=2025-06-08T10:00:00Z
+```
+
+#### UserFilter - User Filtering
+
+```bash
+# Filter by online status
+GET /api/users/?is_online=true
+
+# Search by username
+GET /api/users/?username=john
+
+# Filter by join date
+GET /api/users/?joined_after=2025-01-01
+```
+
+### Combining Pagination and Filtering
+
+All filters work seamlessly with pagination:
+
+```bash
+# Get first 10 messages from today containing "hello"
+GET /api/messages/?message_body=hello&sent_date=2025-06-08&page_size=10
+
+# Get second page of messages from specific user
+GET /api/messages/?sender_username=testuser&page=2
+```
+
+### Search and Ordering
+
+In addition to filtering, all endpoints support:
+
+**Search:**
+```bash
+# Search messages by content or sender username
+GET /api/messages/?search=hello
+
+# Search conversations by participant username
+GET /api/conversations/?search=alice
+```
+
+**Ordering:**
+```bash
+# Order messages by send time (newest first)
+GET /api/messages/?ordering=-sent_at
+
+# Order conversations by creation time
+GET /api/conversations/?ordering=created_at
+```
+
+### Implementation Files
+
+- **`chats/pagination.py`**: Custom pagination classes
+- **`chats/filters.py`**: Django-filter FilterSet classes  
+- **`chats/views.py`**: ViewSets with pagination and filtering
+- **`messaging_app/settings.py`**: REST framework configuration
+
+### Technical Details
+
+**Pagination Classes:**
+- `MessagePagination`: 20 items per page (requirement met)
+- `ConversationPagination`: 15 items per page  
+- `StandardPagination`: 10 items per page
+
+**Filter Backends Configured:**
+- `DjangoFilterBackend`: For field-based filtering
+- `SearchFilter`: For text search across fields
+- `OrderingFilter`: For result ordering
+
+**Security:**
+- All endpoints require authentication
+- Users can only access their own messages/conversations
+- Custom permissions enforce access control
