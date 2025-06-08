@@ -4,6 +4,9 @@ import os
 from django.conf import settings
 from django.http import HttpResponseForbidden, HttpResponse
 from collections import defaultdict
+from django.contrib.auth import get_user_model
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
 
 class RequestLoggingMiddleware:
@@ -236,6 +239,135 @@ class OffensiveLanguageMiddleware:
             # Debug logging
             print(
                 f"DEBUG: IP {client_ip} has sent {request_count + 1}/{self.max_requests} POST requests in the last {self.time_window} seconds"
+            )
+
+        # Continue processing the request
+        response = self.get_response(request)
+        return response
+
+
+class RolePermissionMiddleware:
+    """
+    Middleware to check user roles and restrict access to specific actions.
+    Only allows admin (superuser) and moderator (staff) users to access certain endpoints.
+    Returns 403 Forbidden for users without proper permissions.
+    """
+
+    def __init__(self, get_response):
+        """
+        Initialize the middleware with the get_response callable.
+
+        Args:
+            get_response: The next middleware or view in the chain
+        """
+        self.get_response = get_response
+
+        # Define protected endpoints that require admin/moderator access
+        self.protected_paths = [
+            "/api/conversations/",  # Managing conversations
+            "/api/users/",  # User management
+            "/admin/",  # Django admin
+        ]
+
+        # Define methods that require role-based access
+        self.protected_methods = ["POST", "PUT", "PATCH", "DELETE"]
+
+    def is_protected_endpoint(self, request):
+        """
+        Check if the current request is accessing a protected endpoint.
+
+        Args:
+            request: The Django request object
+
+        Returns:
+            bool: True if the endpoint requires role-based protection
+        """
+        # Check if path starts with any protected path
+        for protected_path in self.protected_paths:
+            if request.path.startswith(protected_path):
+                return True
+
+        # Also protect write operations on API endpoints
+        if (
+            request.path.startswith("/api/")
+            and request.method in self.protected_methods
+        ):
+            return True
+
+        return False
+
+    def has_required_permission(self, user):
+        """
+        Check if the user has the required permissions (admin or moderator).
+
+        Args:
+            user: The Django user object
+
+        Returns:
+            bool: True if user is admin (superuser) or moderator (staff)
+        """
+        if not user or not user.is_authenticated:
+            return False
+
+        # Admin (superuser) has full access
+        if user.is_superuser:
+            return True
+
+        # Moderator (staff) has access
+        if user.is_staff:
+            return True
+
+        return False
+
+    def __call__(self, request):
+        """
+        Process the request and check role-based permissions.
+
+        Args:
+            request: The Django request object
+
+        Returns:
+            403 Forbidden response if user lacks required permissions,
+            otherwise continues processing
+        """
+        # Check if this is a protected endpoint
+        if self.is_protected_endpoint(request):
+            # Get the user from the request
+            user = getattr(request, "user", None)
+
+            # Debug: Log user details
+            print(f"DEBUG: User object: {user}")
+            print(f"DEBUG: User type: {type(user)}")
+            print(
+                f"DEBUG: User authenticated: {getattr(user, 'is_authenticated', False)}"
+            )
+            if user and hasattr(user, "username"):
+                print(f"DEBUG: Username: {user.username}")
+                print(f"DEBUG: is_superuser: {getattr(user, 'is_superuser', False)}")
+                print(f"DEBUG: is_staff: {getattr(user, 'is_staff', False)}")
+
+            # Check if user has required permissions
+            if not self.has_required_permission(user):
+                # Log the access attempt
+                user_info = (
+                    user.username if user and user.is_authenticated else "Anonymous"
+                )
+                print(
+                    f"DEBUG: Access DENIED - User '{user_info}' attempted to access protected endpoint: {request.method} {request.path}"
+                )
+
+                # Return 403 Forbidden response
+                return HttpResponseForbidden(
+                    "Access denied. This action requires admin or moderator privileges. "
+                    "Please contact an administrator if you believe this is an error."
+                )
+
+            # Log successful access for admin/moderator
+            username = (
+                user.username if user and hasattr(user, "username") else "Unknown"
+            )
+            print(
+                f"DEBUG: Access GRANTED - Admin/Moderator '{username}' accessing: {request.method} {request.path}"
             )
 
         # Continue processing the request
