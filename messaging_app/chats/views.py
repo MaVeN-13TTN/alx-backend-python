@@ -44,7 +44,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [UserPermission]
+    permission_classes = [permissions.IsAuthenticated, UserPermission]
     pagination_class = StandardResultsSetPagination
     lookup_field = "user_id"
     filter_backends = [
@@ -74,7 +74,11 @@ class UserViewSet(viewsets.ModelViewSet):
         # Regular users can see all users but with limited information
         return User.objects.all()
 
-    @action(detail=True, methods=["post"], permission_classes=[UserPermission])
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[permissions.IsAuthenticated, UserPermission],
+    )
     def set_online_status(self, request, user_id=None):
         """
         Set user online status - only user can set their own status
@@ -101,7 +105,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
     Handles listing, creating, updating, and deleting conversations with enhanced permissions
     """
 
-    permission_classes = [ConversationPermission]
+    permission_classes = [permissions.IsAuthenticated, ConversationPermission]
     pagination_class = StandardResultsSetPagination
     lookup_field = "conversation_id"
     filter_backends = [
@@ -184,7 +188,10 @@ class ConversationViewSet(viewsets.ModelViewSet):
     @action(
         detail=True,
         methods=["post"],
-        permission_classes=[CanManageConversationParticipants],
+        permission_classes=[
+            permissions.IsAuthenticated,
+            CanManageConversationParticipants,
+        ],
     )
     def add_participant(self, request, conversation_id=None):
         """
@@ -211,7 +218,10 @@ class ConversationViewSet(viewsets.ModelViewSet):
     @action(
         detail=True,
         methods=["post"],
-        permission_classes=[CanManageConversationParticipants],
+        permission_classes=[
+            permissions.IsAuthenticated,
+            CanManageConversationParticipants,
+        ],
     )
     def remove_participant(self, request, conversation_id=None):
         """
@@ -260,7 +270,7 @@ class MessageViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = MessageSerializer
-    permission_classes = [MessagePermission]
+    permission_classes = [permissions.IsAuthenticated, MessagePermission]
     pagination_class = StandardResultsSetPagination
     lookup_field = "message_id"
     filter_backends = [
