@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 import os
 from django.conf import settings
+from django.http import HttpResponseForbidden
 
 
 class RequestLoggingMiddleware:
@@ -80,4 +81,58 @@ class RequestLoggingMiddleware:
         # Continue processing the request
         response = self.get_response(request)
 
+        return response
+
+
+class RestrictAccessByTimeMiddleware:
+    """
+    Middleware to restrict access to the messaging app during certain hours.
+    Denies access outside of 6 AM to 9 PM with 403 Forbidden response.
+    """
+
+    def __init__(self, get_response):
+        """
+        Initialize the middleware with the get_response callable.
+
+        Args:
+            get_response: The next middleware or view in the chain
+        """
+        self.get_response = get_response
+
+    def __call__(self, request):
+        """
+        Process the request and check if access is allowed based on current time.
+
+        Args:
+            request: The Django request object
+
+        Returns:
+            403 Forbidden response if outside allowed hours, otherwise continues processing
+        """
+        # Get current hour (24-hour format)
+        current_hour = datetime.now().hour
+
+        # Debug: Print current time and hour for testing
+        print(f"DEBUG: Current time: {datetime.now()}, Hour: {current_hour}")
+
+        # Define allowed hours: 6 AM (6) to 9 PM (21)
+        start_hour = 6  # 6 AM
+        end_hour = 21  # 9 PM
+
+        # Check if current time is outside allowed hours
+        if current_hour < start_hour or current_hour >= end_hour:
+            print(
+                f"DEBUG: Access BLOCKED - Time {current_hour} is outside allowed hours {start_hour}-{end_hour}"
+            )
+            # Return 403 Forbidden response with error message
+            return HttpResponseForbidden(
+                "Access to the messaging app is restricted. "
+                "Please access between 6:00 AM and 9:00 PM."
+            )
+
+        print(
+            f"DEBUG: Access ALLOWED - Time {current_hour} is within allowed hours {start_hour}-{end_hour}"
+        )
+        # Continue processing the request if within allowed hours
+        response = self.get_response(request)
         return response
