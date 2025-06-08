@@ -2,20 +2,23 @@
 
 ## Overview
 
-This document provides a comprehensive overview of the Messaging App API, including its architecture, available endpoints, data models, and usage instructions. The API is built using Django and Django REST Framework.
+This document provides a comprehensive overview of the Messaging App API, including its architecture, available endpoints, data models, and usage instructions. The API is built using Django and Django REST Framework with JWT (JSON Web Token) authentication for secure access control.
 
 ## Project Structure
 
 -   `messaging_app/`: Main Django project directory.
-    -   `settings.py`: Project settings.
+    -   `settings.py`: Project settings including JWT configuration.
     -   `urls.py`: Project-level URL routing.
 -   `chats/`: Django app for messaging functionalities.
     -   `models.py`: Defines the database models (User, Conversation, Message).
-    -   `views.py`: Contains the ViewSets for API endpoints.
+    -   `views.py`: Contains the ViewSets for API endpoints with permissions.
     -   `serializers.py`: Defines how model instances are converted to JSON and vice-versa.
     -   `urls.py`: App-level URL routing.
+    -   `auth.py`: JWT authentication views and custom authentication endpoints.
+    -   `auth_urls.py`: Authentication-specific URL routing.
+    -   `permissions.py`: Custom permission classes for access control.
 -   `manage.py`: Django's command-line utility.
--   `requirements.txt`: Lists project dependencies.
+-   `requirements.txt`: Lists project dependencies including djangorestframework-simplejwt.
 -   `db.sqlite3`: SQLite database file (for development).
 
 ## Core Models
@@ -49,9 +52,49 @@ Nested relationships (e.g., participants in a conversation, messages in a conver
 
 ## API Endpoints
 
-All API endpoints are prefixed with `/api/`. Authentication is required for all endpoints. Django REST Framework's browsable API is available at `/api-auth/login/`.
+All API endpoints are prefixed with `/api/`. JWT authentication is required for all protected endpoints. Django REST Framework's browsable API is available at `/api-auth/login/`.
 
 ### Base URL: `http://<your-domain>/api/`
+
+## Authentication
+
+This API uses JWT (JSON Web Token) authentication. To access protected endpoints, you must include a valid JWT token in the Authorization header:
+
+```
+Authorization: Bearer <your-jwt-access-token>
+```
+
+### Authentication Endpoints (`/api/auth/`)
+
+#### 1. JWT Token Management
+-   **`POST /auth/token/`**: Obtain JWT token pair (access + refresh tokens).
+    -   Body: `{"username": "your-username", "password": "your-password"}`
+    -   Response: `{"access": "access-token", "refresh": "refresh-token", "user": {...}}`
+
+-   **`POST /auth/token/refresh/`**: Refresh access token using refresh token.
+    -   Body: `{"refresh": "your-refresh-token"}`
+    -   Response: `{"access": "new-access-token"}`
+
+-   **`POST /auth/token/verify/`**: Verify token validity.
+    -   Body: `{"token": "your-token"}`
+    -   Response: `{}` (200 OK if valid, 401 if invalid)
+
+#### 2. User Authentication
+-   **`POST /auth/register/`**: Register a new user and get JWT tokens.
+    -   Body: `{"username": "username", "email": "email@example.com", "password": "password", "confirm_password": "password", "first_name": "First", "last_name": "Last"}`
+    -   Response: `{"user": {...}, "tokens": {"access": "...", "refresh": "..."}}`
+
+-   **`POST /auth/login/`**: Login user and get JWT tokens.
+    -   Body: `{"username": "username", "password": "password"}`
+    -   Response: `{"user": {...}, "tokens": {"access": "...", "refresh": "..."}}`
+
+-   **`POST /auth/logout/`**: Logout user (set offline status).
+    -   Headers: `Authorization: Bearer <access-token>`
+    -   Response: `{"message": "Successfully logged out"}`
+
+-   **`GET /auth/profile/`**: Get current user profile.
+    -   Headers: `Authorization: Bearer <access-token>`
+    -   Response: User profile data
 
 ### 1. User Endpoints
 
@@ -118,26 +161,49 @@ All API endpoints are prefixed with `/api/`. Authentication is required for all 
 
 ## Key Features & Security
 
--   **Authentication**: All API endpoints require authentication.
+-   **JWT Authentication**: All API endpoints require JWT authentication using Bearer tokens.
+-   **Token Security**:
+    -   Access tokens expire after 60 minutes
+    -   Refresh tokens expire after 7 days
+    -   Token rotation and blacklisting enabled for enhanced security
 -   **Permissions**:
     -   Users can only access conversations they participate in.
     -   Users can only edit/delete their own messages.
+    -   Custom permission classes ensure proper access control:
+        - `UserPermission`: Users can read all users but modify only their own profile
+        - `ConversationPermission`: Users can only access conversations they participate in
+        - `MessagePermission`: Users can only access messages in their conversations
 -   **Data Validation**: Input data is validated by serializers. User participation is validated before message creation or conversation updates.
 -   **Filtering and Searching**:
     -   `ConversationViewSet` supports filtering by `created_at`, `updated_at`, and searching by `participants__username`, `participants__email`.
     -   `MessageViewSet` supports filtering by `conversation`, `sender`, `sent_at`, `created_at`, and searching by `message_body`, `sender__username`.
     -   Ordering is available on various fields.
 -   **Pagination**: List endpoints are paginated (default 20 items per page, max 100). Use `?page=<num>&page_size=<num>` to control pagination.
--   **Error Handling**: Standard HTTP error responses are used (e.g., 400 Bad Request, 403 Forbidden, 404 Not Found).
+-   **Error Handling**: Standard HTTP error responses are used (e.g., 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found).
 
 ## Dependencies
 
 -   Django
 -   djangorestframework
+-   djangorestframework-simplejwt (for JWT authentication)
 -   django-filter
 -   drf-nested-routers
 
 Refer to `requirements.txt` for specific versions.
+
+## JWT Configuration
+
+The application is configured with the following JWT settings:
+
+-   **Access Token Lifetime**: 60 minutes
+-   **Refresh Token Lifetime**: 7 days
+-   **Token Rotation**: Enabled (new refresh token issued on refresh)
+-   **Blacklist After Rotation**: Enabled (old tokens are blacklisted)
+-   **Algorithm**: HS256
+-   **Auth Header Type**: Bearer
+-   **Custom Claims**: username, email, user_id, is_staff
+
+The JWT configuration can be found in `messaging_app/settings.py` under the `SIMPLE_JWT` section.
 
 ## Setup and Running the Project
 
@@ -168,11 +234,66 @@ Refer to `requirements.txt` for specific versions.
 
 ## Testing the API
 
--   Use Django REST Framework's browsable API by navigating to `/api/` or specific endpoints in your browser (after logging in via `/api-auth/login/`).
--   Use tools like Postman or `curl`. Example:
-    ```bash
-    # Assuming you have an auth token
-    curl -X GET http://127.0.0.1:8000/api/conversations/ -H "Authorization: Token YOUR_AUTH_TOKEN"
-    ```
+### JWT Authentication Flow
+
+1. **Register a new user:**
+   ```bash
+   curl -X POST http://127.0.0.1:8000/api/auth/register/ \
+     -H "Content-Type: application/json" \
+     -d '{
+       "username": "testuser",
+       "email": "test@example.com",
+       "password": "testpass123",
+       "confirm_password": "testpass123",
+       "first_name": "Test",
+       "last_name": "User"
+     }'
+   ```
+
+2. **Login to get JWT tokens:**
+   ```bash
+   curl -X POST http://127.0.0.1:8000/api/auth/token/ \
+     -H "Content-Type: application/json" \
+     -d '{"username": "testuser", "password": "testpass123"}'
+   ```
+
+3. **Use the access token for authenticated requests:**
+   ```bash
+   curl -X GET http://127.0.0.1:8000/api/conversations/ \
+     -H "Authorization: Bearer <your-access-token>"
+   ```
+
+4. **Refresh token when needed:**
+   ```bash
+   curl -X POST http://127.0.0.1:8000/api/auth/token/refresh/ \
+     -H "Content-Type: application/json" \
+     -d '{"refresh": "<your-refresh-token>"}'
+   ```
+
+### Other Testing Methods
+
+-   Use Django REST Framework's browsable API by navigating to `/api/` or specific endpoints in your browser (after authenticating).
+-   Use tools like Postman, Insomnia, or Thunder Client for VS Code.
+-   The `/api-auth/login/` endpoint is available for session-based authentication in the browsable API.
+
+### Example API Usage
+
+```bash
+# Create a conversation
+curl -X POST http://127.0.0.1:8000/api/conversations/ \
+  -H "Authorization: Bearer <access-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"participant_ids": ["user-uuid-1", "user-uuid-2"]}'
+
+# Send a message
+curl -X POST http://127.0.0.1:8000/api/messages/ \
+  -H "Authorization: Bearer <access-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"conversation": "conversation-uuid", "message_body": "Hello!"}'
+
+# Get user profile
+curl -X GET http://127.0.0.1:8000/api/auth/profile/ \
+  -H "Authorization: Bearer <access-token>"
+```
 
 This `README.md` provides a consolidated summary of the project's documentation.
