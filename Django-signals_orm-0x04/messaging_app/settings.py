@@ -26,7 +26,7 @@ SECRET_KEY = "django-insecure-30p)&g$gxi!r9%ev5unl+kn96s8)i-qm&j$$hy5)^ipq%6_8cd
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['testserver']
 
 
 # Application definition
@@ -89,6 +89,15 @@ DATABASES = {
 
 # Custom User Model
 AUTH_USER_MODEL = "chats.User"
+
+# Cache configuration
+# https://docs.djangoproject.com/en/5.2/topics/cache/
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "unique-snowflake",
+    }
+}
 
 
 # Password validation

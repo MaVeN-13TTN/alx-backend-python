@@ -1577,7 +1577,7 @@ class MessageViewSetTests(TestCase):
         client.force_authenticate(user=self.user1)
 
         response = client.post(
-            "/api/messaging/messages/create/",
+            "/api/messaging/create-message/",
             {"receiver": self.user2.pk, "content": "Test message via create endpoint"},
         )
 

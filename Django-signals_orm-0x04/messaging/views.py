@@ -262,6 +262,30 @@ class MessageViewSet(viewsets.ModelViewSet):
         """
         serializer.save(sender=self.request.user)
 
+    def create(self, request, *args, **kwargs):
+        """
+        Create a new message and return the full serialized object
+        """
+        # Use CreateMessageSerializer for input validation
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Save the message with sender set
+        message = serializer.save(sender=request.user)
+
+        # Return the full message object using MessageSerializer
+        response_serializer = MessageSerializer(
+            Message.objects.select_related("sender", "receiver", "parent_message")
+            .prefetch_related("replies", "edit_history")
+            .get(pk=message.pk),
+            context={"request": request},
+        )
+
+        headers = self.get_success_headers(response_serializer.data)
+        return Response(
+            response_serializer.data, status=status.HTTP_201_CREATED, headers=headers
+        )
+
 
 class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     """

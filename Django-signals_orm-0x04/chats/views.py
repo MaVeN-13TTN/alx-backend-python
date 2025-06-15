@@ -1,4 +1,6 @@
 from django.shortcuts import render
+from django.views.decorators.cache import cache_page
+from django.utils.decorators import method_decorator
 from rest_framework import viewsets, status, permissions, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -248,9 +250,11 @@ class ConversationViewSet(viewsets.ModelViewSet):
             )
 
     @action(detail=True, methods=["get"])
+    @method_decorator(cache_page(60))  # Cache for 60 seconds
     def messages(self, request, conversation_id=None):
         """
         Get all messages in a conversation with pagination
+        This view is cached for 60 seconds to improve performance
         """
         conversation = self.get_object()
         messages = conversation.messages.all().order_by("-sent_at")
@@ -265,10 +269,12 @@ class ConversationViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+@method_decorator(cache_page(60), name="list")  # Cache list view for 60 seconds
 class MessageViewSet(viewsets.ModelViewSet):
     """
     ViewSet for Message model
     Handles creating, listing, updating, and deleting messages with enhanced permissions
+    List view is cached for 60 seconds to improve performance
     """
 
     serializer_class = MessageSerializer
@@ -352,9 +358,11 @@ class MessageViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=True, methods=["get"])
+    @method_decorator(cache_page(60))  # Cache for 60 seconds
     def conversation_messages(self, request, message_id=None):
         """
         Get all messages from the same conversation as this message
+        This view is cached for 60 seconds to improve performance
         """
         message = self.get_object()
         conversation_messages = Message.objects.filter(
