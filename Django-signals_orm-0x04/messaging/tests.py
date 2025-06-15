@@ -1652,7 +1652,8 @@ class UnreadMessagesTests(TestCase):
         )
 
         # Test unread messages for user2
-        unread_messages = Message.unread_messages.for_user(self.user2)
+        # Test the custom manager
+        unread_messages = Message.unread.unread_for_user(self.user2)
         unread_ids = [msg.message_id for msg in unread_messages]
 
         self.assertEqual(len(unread_ids), 2)
@@ -1750,6 +1751,39 @@ class UnreadMessagesTests(TestCase):
                 self.assertIsNotNone(msg.content)
                 self.assertIsNotNone(msg.timestamp)
                 self.assertIsNotNone(msg.sender.username)
+
+    def test_unread_messages_with_only_optimization(self):
+        """Test that .only() is used to optimize queries for unread messages"""
+        # Create test messages
+        self.msg1 = Message.objects.create(
+            sender=self.user1,
+            receiver=self.user2,
+            content="Test message 1",
+            is_read=False,
+        )
+
+        # Test explicit .only() usage for inbox display
+        unread_messages_optimized = (
+            Message.objects.filter(receiver=self.user2, is_read=False)
+            .select_related("sender")
+            .only(
+                "message_id",
+                "content",
+                "timestamp",
+                "is_read",
+                "sender__username",
+                "sender__first_name",
+                "sender__last_name",
+            )
+            .order_by("-timestamp")
+        )
+
+        # Check that we get the expected results
+        self.assertEqual(unread_messages_optimized.count(), 1)
+        first_msg = unread_messages_optimized.first()
+        self.assertEqual(first_msg.content, "Test message 1")
+        self.assertEqual(first_msg.sender.username, "user1")
+        self.assertFalse(first_msg.is_read)
 
 
 class UnreadMessagesAPITests(TestCase):

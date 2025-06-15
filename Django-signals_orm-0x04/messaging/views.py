@@ -153,7 +153,8 @@ class MessageViewSet(viewsets.ModelViewSet):
         Get unread messages for the authenticated user using custom manager
         """
         user = request.user
-        unread_messages = Message.unread_messages.for_user(user)
+        # Using the custom manager with .only() optimization
+        unread_messages = Message.unread.unread_for_user(user)
 
         page = self.paginate_queryset(unread_messages)
         if page is not None:
@@ -636,10 +637,12 @@ def create_message(request):
 def get_unread_messages(request):
     """
     Get unread messages for the authenticated user using custom manager
+    This view uses the custom manager to display only unread messages in a user's inbox
     """
     try:
         user = request.user
-        unread_messages = Message.unread_messages.for_user(user)
+        # Using the custom manager with .only() optimization for unread messages
+        unread_messages = Message.unread.unread_for_user(user)
 
         # Apply pagination
         paginator = MessagePagination()
@@ -767,3 +770,41 @@ def get_unread_count(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@action(detail=False, methods=["get"])
+def inbox_unread(self, request):
+    """
+    Display only unread messages in a user's inbox with .only() optimization
+    This method demonstrates explicit use of .only() to retrieve only necessary fields
+    """
+    user = request.user
+
+    # Using .only() to retrieve only necessary fields for inbox display
+    unread_inbox_messages = (
+        Message.objects.filter(receiver=user, is_read=False)
+        .select_related("sender", "parent_message")
+        .only(
+            "message_id",
+            "content",
+            "timestamp",
+            "is_read",
+            "sender__username",
+            "sender__first_name",
+            "sender__last_name",
+            "parent_message__content",
+        )
+        .order_by("-timestamp")
+    )
+
+    page = self.paginate_queryset(unread_inbox_messages)
+    if page is not None:
+        serializer = MessageListSerializer(
+            page, many=True, context={"request": request}
+        )
+        return self.get_paginated_response(serializer.data)
+
+    serializer = MessageListSerializer(
+        unread_inbox_messages, many=True, context={"request": request}
+    )
+    return Response(serializer.data)
