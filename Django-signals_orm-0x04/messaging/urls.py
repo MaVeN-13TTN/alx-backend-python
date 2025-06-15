@@ -12,6 +12,8 @@ router.register(r"notifications", views.NotificationViewSet, basename="notificat
 urlpatterns = [
     # ViewSet routes
     path("api/", include(router.urls)),
+    # Custom message creation endpoint
+    path("api/messages/create/", views.create_message, name="create_message"),
     # Custom threading endpoints
     path(
         "api/messages/<uuid:message_id>/thread/",

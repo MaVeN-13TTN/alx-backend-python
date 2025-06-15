@@ -147,6 +147,12 @@ class MessageViewSet(viewsets.ModelViewSet):
         )
         return Response(serializer.data)
 
+    def perform_create(self, serializer):
+        """
+        Set the sender to the current authenticated user when creating a message
+        """
+        serializer.save(sender=self.request.user)
+
 
 class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     """
@@ -208,7 +214,11 @@ def get_message_thread(request, message_id):
     Get the complete thread for a specific message
     """
     try:
-        message = get_object_or_404(Message, message_id=message_id)
+        # Optimize the initial message query
+        message = get_object_or_404(
+            Message.objects.select_related("sender", "receiver", "parent_message"),
+            message_id=message_id,
+        )
 
         # Check if user has permission to view this message
         if request.user not in [message.sender, message.receiver]:
@@ -252,7 +262,11 @@ def reply_to_message(request, message_id):
     Reply to a specific message
     """
     try:
-        parent_message = get_object_or_404(Message, message_id=message_id)
+        # Optimize the parent message query
+        parent_message = get_object_or_404(
+            Message.objects.select_related("sender", "receiver", "parent_message"),
+            message_id=message_id,
+        )
 
         # Check if user can reply to this message
         if not parent_message.can_reply_to(request.user):
@@ -261,12 +275,12 @@ def reply_to_message(request, message_id):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        # Create the reply
+        # Create the reply with sender automatically set
         serializer = CreateMessageSerializer(
             data=request.data, context={"request": request}
         )
         if serializer.is_valid():
-            reply = serializer.save(parent_message=parent_message)
+            reply = serializer.save(sender=request.user, parent_message=parent_message)
 
             # Return the created reply
             response_serializer = MessageSerializer(reply, context={"request": request})
@@ -478,3 +492,32 @@ def get_user_data_summary(request):
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def create_message(request):
+    """
+    Create a new message or reply with proper optimization
+    """
+    try:
+        serializer = CreateMessageSerializer(
+            data=request.data, context={"request": request}
+        )
+        if serializer.is_valid():
+            # Save with sender automatically set
+            message = serializer.save(sender=request.user)
+
+            # Return the created message with optimized loading
+            response_serializer = MessageSerializer(
+                Message.objects.select_related("sender", "receiver", "parent_message")
+                .prefetch_related("replies", "edit_history")
+                .get(pk=message.pk),
+                context={"request": request},
+            )
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

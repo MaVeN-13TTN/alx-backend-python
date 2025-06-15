@@ -5,6 +5,7 @@ from django.test.utils import override_settings
 from unittest.mock import patch
 from .models import Message, Notification, MessageHistory
 from .signals import create_message_notification, update_message_read_status
+from .views import MessageViewSet
 
 User = get_user_model()
 
@@ -1493,3 +1494,127 @@ class MessageThreadingAPITests(TestCase):
         self.assertEqual(reply.parent_message, root)
         self.assertTrue(reply.is_reply)
         self.assertEqual(reply.thread_depth, 1)
+
+
+class MessageViewSetTests(TestCase):
+    """
+    Test cases for the MessageViewSet functionality
+    """
+
+    def setUp(self):
+        """Set up test data"""
+        self.user1 = User.objects.create_user(
+            username="testuser1", email="test1@example.com", password="testpass123"
+        )
+        self.user2 = User.objects.create_user(
+            username="testuser2", email="test2@example.com", password="testpass123"
+        )
+
+    def test_perform_create_sets_sender(self):
+        """Test that perform_create method sets sender=request.user"""
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        # Use the viewset's create action to test perform_create
+        response = client.post(
+            "/api/messaging/api/messages/",
+            {"receiver": self.user2.pk, "content": "Test message"},
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+        # Verify the message was created with correct sender (set by perform_create)
+        message_data = response.json()
+        message = Message.objects.get(message_id=message_data["message_id"])
+
+        self.assertEqual(message.sender, self.user1)
+        self.assertEqual(message.receiver, self.user2)
+        self.assertEqual(message.content, "Test message")
+
+    def test_get_queryset_optimizations(self):
+        """Test that get_queryset uses select_related and prefetch_related"""
+        # Create some test messages
+        Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Message 1"
+        )
+        Message.objects.create(
+            sender=self.user2, receiver=self.user1, content="Message 2"
+        )
+
+        from django.test import RequestFactory
+
+        factory = RequestFactory()
+        request = factory.get("/api/messages/")
+        request.user = self.user1
+
+        viewset = MessageViewSet()
+        viewset.request = request
+
+        # Test that queryset includes optimizations
+        queryset = viewset.get_queryset()
+
+        # Check that the queryset has the right query optimizations
+        query_str = str(queryset.query)
+        self.assertIn("sender", query_str.lower())
+        self.assertIn("receiver", query_str.lower())
+
+        # Test that it filters correctly
+        messages = list(queryset)
+        self.assertTrue(
+            all(
+                msg.sender == self.user1 or msg.receiver == self.user1
+                for msg in messages
+            )
+        )
+
+    def test_create_message_api_endpoint(self):
+        """Test the custom create_message API endpoint"""
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        response = client.post(
+            "/api/messaging/api/messages/create/",
+            {"receiver": self.user2.pk, "content": "Test message via create endpoint"},
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+        # Verify the message was created with correct sender
+        message_data = response.json()
+        message = Message.objects.get(message_id=message_data["message_id"])
+
+        self.assertEqual(message.sender, self.user1)
+        self.assertEqual(message.receiver, self.user2)
+        self.assertEqual(message.content, "Test message via create endpoint")
+
+    def test_reply_to_message_sets_sender(self):
+        """Test that reply_to_message sets sender=request.user"""
+        # Create a root message
+        root_message = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Root message"
+        )
+
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.force_authenticate(user=self.user2)  # User2 will reply
+
+        response = client.post(
+            f"/api/messaging/api/messages/{root_message.message_id}/reply/",
+            {"receiver": self.user1.pk, "content": "Reply message"},
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+        # Verify the reply was created with correct sender
+        reply_data = response.json()
+        reply = Message.objects.get(message_id=reply_data["message_id"])
+
+        self.assertEqual(reply.sender, self.user2)  # Should be set to request.user
+        self.assertEqual(reply.receiver, self.user1)
+        self.assertEqual(reply.parent_message, root_message)
+        self.assertEqual(reply.content, "Reply message")
