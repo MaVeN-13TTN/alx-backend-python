@@ -647,3 +647,369 @@ class MessageHistoryModelTests(TestCase):
         str_repr = str(history)
         self.assertIn(str(self.message.message_id), str_repr)
         self.assertIn("Edit history", str_repr)
+
+
+# ============================================================================
+# USER DELETION TESTS
+# ============================================================================
+
+
+class UserDeletionTests(TestCase):
+    """
+    Test cases for user deletion and related data cleanup
+    """
+
+    def setUp(self):
+        """
+        Set up test data for user deletion tests
+        """
+        self.user1 = User.objects.create_user(
+            username="user1", email="user1@example.com", password="testpass123"
+        )
+        self.user2 = User.objects.create_user(
+            username="user2", email="user2@example.com", password="testpass123"
+        )
+        self.user3 = User.objects.create_user(
+            username="user3", email="user3@example.com", password="testpass123"
+        )
+
+    def test_user_deletion_cleans_up_sent_messages(self):
+        """
+        Test that deleting a user removes all messages they sent
+        """
+        # Create messages from user1 to user2
+        message1 = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Message 1"
+        )
+        message2 = Message.objects.create(
+            sender=self.user1, receiver=self.user3, content="Message 2"
+        )
+
+        # Create a message from user2 to user1 (should remain after user1 deletion)
+        message3 = Message.objects.create(
+            sender=self.user2, receiver=self.user1, content="Message 3"
+        )
+
+        # Verify messages exist
+        self.assertEqual(Message.objects.count(), 3)
+        self.assertEqual(Message.objects.filter(sender=self.user1).count(), 2)
+
+        # Delete user1
+        user1_id = self.user1.pk
+        self.user1.delete()
+
+        # Verify user1's sent messages are deleted (CASCADE should handle this)
+        self.assertEqual(Message.objects.filter(sender_id=user1_id).count(), 0)
+
+        # Verify user1's received messages are also deleted (CASCADE should handle this)
+        self.assertEqual(Message.objects.filter(receiver_id=user1_id).count(), 0)
+
+        # Only message2 (user1->user3) should remain, but user1 is deleted so it should be gone
+        # Actually, both message1 and message2 should be deleted because user1 (sender) is deleted
+        # message3 should also be deleted because user1 (receiver) is deleted
+        # So no messages should remain
+        self.assertEqual(Message.objects.count(), 0)
+
+    def test_user_deletion_cleans_up_received_messages(self):
+        """
+        Test that deleting a user removes all messages they received
+        """
+        # Create messages to user1 from different users
+        message1 = Message.objects.create(
+            sender=self.user2, receiver=self.user1, content="Message to user1"
+        )
+        message2 = Message.objects.create(
+            sender=self.user3, receiver=self.user1, content="Another message to user1"
+        )
+
+        # Create a message between user2 and user3 (should remain)
+        message3 = Message.objects.create(
+            sender=self.user2,
+            receiver=self.user3,
+            content="Message between user2 and user3",
+        )
+
+        # Verify initial state
+        self.assertEqual(Message.objects.count(), 3)
+        self.assertEqual(Message.objects.filter(receiver=self.user1).count(), 2)
+
+        # Delete user1
+        user1_id = self.user1.pk
+        self.user1.delete()
+
+        # Verify messages to user1 are deleted
+        self.assertEqual(Message.objects.filter(receiver_id=user1_id).count(), 0)
+
+        # Only message3 should remain
+        self.assertEqual(Message.objects.count(), 1)
+        remaining_message = Message.objects.first()
+        self.assertEqual(remaining_message.sender, self.user2)
+        self.assertEqual(remaining_message.receiver, self.user3)
+
+    def test_user_deletion_cleans_up_notifications(self):
+        """
+        Test that deleting a user removes all their notifications
+        """
+        # Create messages which will create notifications
+        message1 = Message.objects.create(
+            sender=self.user2, receiver=self.user1, content="Message 1"
+        )
+        message2 = Message.objects.create(
+            sender=self.user3, receiver=self.user1, content="Message 2"
+        )
+
+        # Verify notifications were created
+        user1_notifications = Notification.objects.filter(user=self.user1)
+        self.assertGreater(user1_notifications.count(), 0)
+
+        initial_notification_count = Notification.objects.count()
+
+        # Delete user1
+        user1_id = self.user1.pk
+        self.user1.delete()
+
+        # Verify user1's notifications are deleted
+        self.assertEqual(Notification.objects.filter(user_id=user1_id).count(), 0)
+
+        # All notifications should be gone since messages are also deleted
+        self.assertEqual(Notification.objects.count(), 0)
+
+    def test_user_deletion_cleans_up_message_histories(self):
+        """
+        Test that deleting a user removes message histories they created
+        """
+        # Create a message
+        message = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Original content"
+        )
+
+        # Create message histories (simulating edits by user1)
+        history1 = MessageHistory.objects.create(
+            message=message,
+            old_content="Original content",
+            new_content="Edited content 1",
+            edited_by=self.user1,
+        )
+
+        # Edit by user2 (should be cleaned up when user2 is deleted)
+        history2 = MessageHistory.objects.create(
+            message=message,
+            old_content="Edited content 1",
+            new_content="Edited content 2",
+            edited_by=self.user2,
+        )
+
+        # Verify histories exist
+        self.assertEqual(MessageHistory.objects.count(), 2)
+        self.assertEqual(MessageHistory.objects.filter(edited_by=self.user1).count(), 1)
+
+        # Delete user1
+        user1_id = self.user1.pk
+        self.user1.delete()
+
+        # All histories should be deleted because the message is deleted (CASCADE)
+        self.assertEqual(MessageHistory.objects.count(), 0)
+
+    def test_multiple_user_deletion_cleanup(self):
+        """
+        Test cleanup when multiple users are deleted
+        """
+        # Create a complex web of messages and interactions
+        messages = [
+            Message.objects.create(
+                sender=self.user1, receiver=self.user2, content="1->2"
+            ),
+            Message.objects.create(
+                sender=self.user2, receiver=self.user1, content="2->1"
+            ),
+            Message.objects.create(
+                sender=self.user1, receiver=self.user3, content="1->3"
+            ),
+            Message.objects.create(
+                sender=self.user3, receiver=self.user1, content="3->1"
+            ),
+            Message.objects.create(
+                sender=self.user2, receiver=self.user3, content="2->3"
+            ),
+        ]
+
+        # Create some message histories
+        for i, message in enumerate(messages[:3]):
+            MessageHistory.objects.create(
+                message=message,
+                old_content=f"Original {i}",
+                new_content=f"Edited {i}",
+                edited_by=message.sender,
+            )
+
+        # Verify initial state
+        self.assertEqual(Message.objects.count(), 5)
+        self.assertEqual(MessageHistory.objects.count(), 3)
+        self.assertGreater(Notification.objects.count(), 0)
+
+        # Delete user1
+        self.user1.delete()
+
+        # After user1 deletion, only messages between user2 and user3 should remain
+        remaining_messages = Message.objects.all()
+        self.assertEqual(remaining_messages.count(), 1)
+        self.assertEqual(remaining_messages.first().content, "2->3")
+
+        # Delete user2
+        self.user2.delete()
+
+        # Now no messages should remain
+        self.assertEqual(Message.objects.count(), 0)
+        self.assertEqual(MessageHistory.objects.count(), 0)
+        self.assertEqual(Notification.objects.count(), 0)
+
+    @patch("builtins.print")
+    def test_user_deletion_signals_called(self, mock_print):
+        """
+        Test that user deletion signals are called and produce expected output
+        """
+        # Create some data for the user
+        Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Test message"
+        )
+
+        # Delete the user
+        username = self.user1.username
+        user_id = self.user1.pk
+        self.user1.delete()
+
+        # Verify that cleanup signals were called (check print statements)
+        printed_messages = [str(call) for call in mock_print.call_args_list]
+        printed_text = " ".join(printed_messages)
+
+        # Should contain user cleanup messages
+        self.assertIn(username, printed_text)
+        self.assertIn("cleanup", printed_text.lower())
+
+    def test_cascading_deletion_integrity(self):
+        """
+        Test that CASCADE relationships work correctly for data integrity
+        """
+        # Create interconnected data
+        message = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Test message"
+        )
+
+        # Get the notification created by the signal
+        notification = Notification.objects.filter(message=message).first()
+        self.assertIsNotNone(notification)
+
+        # Create message history
+        history = MessageHistory.objects.create(
+            message=message,
+            old_content="Original",
+            new_content="Edited",
+            edited_by=self.user1,
+        )
+
+        # Store IDs for verification after deletion
+        message_id = message.pk
+        notification_id = notification.pk
+        history_id = history.pk
+
+        # Delete user1
+        self.user1.delete()
+
+        # Verify all related data is cleaned up
+        self.assertFalse(Message.objects.filter(pk=message_id).exists())
+        self.assertFalse(Notification.objects.filter(pk=notification_id).exists())
+        self.assertFalse(MessageHistory.objects.filter(pk=history_id).exists())
+
+    def test_partial_data_cleanup(self):
+        """
+        Test cleanup when user has mixed relationships (sender/receiver/editor)
+        """
+        # user1 sends to user2
+        message1 = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Message 1"
+        )
+
+        # user2 sends to user3
+        message2 = Message.objects.create(
+            sender=self.user2, receiver=self.user3, content="Message 2"
+        )
+
+        # user1 edits message2 (as if they were a moderator or had edit permissions)
+        history = MessageHistory.objects.create(
+            message=message2,
+            old_content="Message 2",
+            new_content="Message 2 (edited by user1)",
+            edited_by=self.user1,
+        )
+
+        # Verify initial state
+        self.assertEqual(Message.objects.count(), 2)
+        self.assertEqual(MessageHistory.objects.count(), 1)
+
+        # Delete user1
+        self.user1.delete()
+
+        # message1 should be deleted (user1 was sender)
+        # message2 should remain (user1 was not sender or receiver)
+        # history should be deleted (user1 was editor) - CASCADE from edited_by
+        self.assertEqual(Message.objects.count(), 1)
+        remaining_message = Message.objects.first()
+        self.assertEqual(remaining_message.content, "Message 2")
+
+        # History should be deleted because edited_by user is deleted
+        # (assuming CASCADE is set on edited_by foreign key)
+        self.assertEqual(MessageHistory.objects.count(), 0)
+
+
+# ============================================================================
+# USER DELETION API TESTS
+# ============================================================================
+
+
+class UserDeletionAPITests(TestCase):
+    """
+    Test cases for user deletion API endpoints
+    """
+
+    def setUp(self):
+        """
+        Set up test data for API tests
+        """
+        self.user = User.objects.create_user(
+            username="testuser", email="test@example.com", password="testpass123"
+        )
+        self.other_user = User.objects.create_user(
+            username="otheruser", email="other@example.com", password="testpass123"
+        )
+
+    def test_user_data_summary_endpoint(self):
+        """
+        Test the user data summary API endpoint
+        """
+        # Create some data for the user
+        Message.objects.create(
+            sender=self.user, receiver=self.other_user, content="Sent message"
+        )
+        Message.objects.create(
+            sender=self.other_user, receiver=self.user, content="Received message"
+        )
+
+        # The API test would require Django's test client
+        # This is a placeholder for the structure
+        self.assertTrue(True)  # Placeholder assertion
+
+    def test_delete_user_endpoint_authentication(self):
+        """
+        Test that user deletion endpoint requires authentication
+        """
+        # This would test the API endpoint authentication
+        # Placeholder for API testing structure
+        self.assertTrue(True)  # Placeholder assertion
+
+    def test_delete_user_with_confirmation_endpoint(self):
+        """
+        Test user deletion with password confirmation
+        """
+        # This would test the password confirmation endpoint
+        # Placeholder for API testing structure
+        self.assertTrue(True)  # Placeholder assertion

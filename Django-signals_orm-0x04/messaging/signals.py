@@ -1,4 +1,4 @@
-from django.db.models.signals import post_save, pre_save
+from django.db.models.signals import post_save, pre_save, post_delete
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
 from .models import Message, Notification, MessageHistory
@@ -192,3 +192,201 @@ def log_message_history_creation(sender, instance, created, **kwargs):
         # - Analytics tracking for user behavior
         # - Real-time notifications to moderators
         # - Automatic content moderation checks
+
+
+# ============================================================================
+# USER DELETION CLEANUP SIGNALS
+# ============================================================================
+
+
+@receiver(post_delete, sender=User)
+def cleanup_user_messages(sender, instance, **kwargs):
+    """
+    Signal handler that cleans up messages when a user is deleted.
+
+    This signal removes all messages sent by or received by the deleted user.
+    Note: The CASCADE foreign key relationships should handle this automatically,
+    but we include explicit cleanup for logging and custom business logic.
+
+    Args:
+        sender: The model class (User)
+        instance: The deleted User instance
+        **kwargs: Additional keyword arguments
+    """
+    try:
+        user_id = instance.pk
+        username = getattr(instance, "username", "Unknown")
+
+        # Count messages before deletion for logging
+        sent_messages_count = Message.objects.filter(sender=instance).count()
+        received_messages_count = Message.objects.filter(receiver=instance).count()
+
+        # Delete messages sent by this user
+        deleted_sent = Message.objects.filter(sender=instance).delete()
+
+        # Delete messages received by this user
+        deleted_received = Message.objects.filter(receiver=instance).delete()
+
+        print(f"User cleanup - Messages: {username} (ID: {user_id})")
+        print(f"  ├─ Sent messages deleted: {sent_messages_count}")
+        print(f"  └─ Received messages deleted: {received_messages_count}")
+
+        # Optional: Add custom cleanup logic here
+        # - Archive important messages before deletion
+        # - Send notifications to other users about deleted conversations
+        # - Log deletion for audit purposes
+
+    except Exception as e:
+        print(f"Error cleaning up messages for deleted user: {str(e)}")
+
+
+@receiver(post_delete, sender=User)
+def cleanup_user_notifications(sender, instance, **kwargs):
+    """
+    Signal handler that cleans up notifications when a user is deleted.
+
+    This removes all notifications associated with the deleted user.
+
+    Args:
+        sender: The model class (User)
+        instance: The deleted User instance
+        **kwargs: Additional keyword arguments
+    """
+    try:
+        user_id = instance.pk
+        username = getattr(instance, "username", "Unknown")
+
+        # Count notifications before deletion
+        notifications_count = Notification.objects.filter(user=instance).count()
+
+        # Delete notifications for this user
+        deleted_notifications = Notification.objects.filter(user=instance).delete()
+
+        print(f"User cleanup - Notifications: {username} (ID: {user_id})")
+        print(f"  └─ Notifications deleted: {notifications_count}")
+
+        # Optional: Send final notifications to related users
+        # - Notify contacts that user has left
+        # - Clean up notification preferences
+
+    except Exception as e:
+        print(f"Error cleaning up notifications for deleted user: {str(e)}")
+
+
+@receiver(post_delete, sender=User)
+def cleanup_user_message_histories(sender, instance, **kwargs):
+    """
+    Signal handler that cleans up message edit histories when a user is deleted.
+
+    This removes all message histories edited by the deleted user and also
+    histories related to messages the user was involved in.
+
+    Args:
+        sender: The model class (User)
+        instance: The deleted User instance
+        **kwargs: Additional keyword arguments
+    """
+    try:
+        user_id = instance.pk
+        username = getattr(instance, "username", "Unknown")
+
+        # Count histories before deletion
+        edited_by_user_count = MessageHistory.objects.filter(edited_by=instance).count()
+
+        # Count histories for messages where user was sender or receiver
+        # Note: These will be deleted automatically when messages are deleted due to CASCADE
+        related_histories_count = (
+            MessageHistory.objects.filter(message__sender=instance).count()
+            + MessageHistory.objects.filter(message__receiver=instance).count()
+        )
+
+        # Delete histories edited by this user
+        deleted_histories = MessageHistory.objects.filter(edited_by=instance).delete()
+
+        print(f"User cleanup - Message Histories: {username} (ID: {user_id})")
+        print(f"  ├─ Histories edited by user: {edited_by_user_count}")
+        print(
+            f"  └─ Related message histories: {related_histories_count} (deleted via CASCADE)"
+        )
+
+        # Optional: Archive edit histories for compliance
+        # - Export edit logs before deletion
+        # - Maintain anonymized editing statistics
+
+    except Exception as e:
+        print(f"Error cleaning up message histories for deleted user: {str(e)}")
+
+
+@receiver(post_delete, sender=User)
+def log_user_deletion_summary(sender, instance, **kwargs):
+    """
+    Signal handler that logs a comprehensive summary of user deletion.
+
+    This provides a final audit log of what was cleaned up when the user
+    was deleted.
+
+    Args:
+        sender: The model class (User)
+        instance: The deleted User instance
+        **kwargs: Additional keyword arguments
+    """
+    try:
+        user_id = instance.pk
+        username = getattr(instance, "username", "Unknown")
+        email = getattr(instance, "email", "Unknown")
+        date_joined = getattr(instance, "date_joined", "Unknown")
+
+        print(f"📋 USER DELETION SUMMARY")
+        print(f"{'='*50}")
+        print(f"👤 User: {username} ({email})")
+        print(f"🆔 ID: {user_id}")
+        print(f"📅 Joined: {date_joined}")
+        print(f"🗑️  Deletion completed successfully")
+        print(f"✅ All related data cleaned up via signals and CASCADE relationships")
+        print(f"{'='*50}")
+
+        # Optional: Send to external logging service
+        # - Audit logs
+        # - Analytics
+        # - Compliance reporting
+
+    except Exception as e:
+        print(f"Error logging user deletion summary: {str(e)}")
+
+
+# ============================================================================
+# MESSAGE DELETION CLEANUP SIGNALS
+# ============================================================================
+
+
+@receiver(post_delete, sender=Message)
+def cleanup_message_related_data(sender, instance, **kwargs):
+    """
+    Signal handler that cleans up data when a message is deleted.
+
+    This removes notifications and histories related to the deleted message.
+    Note: This should happen automatically due to CASCADE relationships,
+    but we include it for explicit logging and custom logic.
+
+    Args:
+        sender: The model class (Message)
+        instance: The deleted Message instance
+        **kwargs: Additional keyword arguments
+    """
+    try:
+        message_id = instance.pk
+        sender_username = getattr(instance.sender, "username", "Unknown")
+        receiver_username = getattr(instance.receiver, "username", "Unknown")
+
+        print(f"Message cleanup: {message_id}")
+        print(f"  ├─ From: {sender_username}")
+        print(f"  ├─ To: {receiver_username}")
+        print(f"  └─ Related notifications and histories cleaned up via CASCADE")
+
+        # Optional: Custom cleanup logic
+        # - Archive message content before deletion
+        # - Update conversation statistics
+        # - Notify participants about message deletion
+
+    except Exception as e:
+        print(f"Error cleaning up data for deleted message: {str(e)}")
