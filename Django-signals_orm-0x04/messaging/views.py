@@ -3,6 +3,8 @@ from django.contrib.auth import get_user_model, logout
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.cache import cache_page
+from django.utils.decorators import method_decorator
 from django.contrib.auth.decorators import login_required
 from rest_framework import status, permissions, generics, viewsets
 from rest_framework.decorators import api_view, permission_classes, action
@@ -33,6 +35,7 @@ class MessagePagination(PageNumberPagination):
     max_page_size = 100
 
 
+@method_decorator(cache_page(60), name='list')  # Cache list view for 60 seconds
 class MessageViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing messages with threading support
@@ -148,9 +151,11 @@ class MessageViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=False, methods=["get"])
+    @method_decorator(cache_page(60))  # Cache for 60 seconds
     def unread(self, request):
         """
         Get unread messages for the authenticated user using custom manager
+        This view is cached for 60 seconds to improve performance
         """
         user = request.user
         # Using the custom manager with .only() optimization
@@ -169,9 +174,11 @@ class MessageViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=False, methods=["get"])
+    @method_decorator(cache_page(60))  # Cache for 60 seconds
     def inbox(self, request):
         """
         Get user's inbox with unread messages and threading info
+        This view is cached for 60 seconds to improve performance
         """
         user = request.user
         inbox_messages = Message.unread_messages.inbox_for_user(user)
@@ -658,10 +665,12 @@ def create_message(request):
 
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
+@cache_page(60)  # Cache for 60 seconds
 def get_unread_messages(request):
     """
     Get unread messages for the authenticated user using custom manager
     This view uses the custom manager to display only unread messages in a user's inbox
+    This view is cached for 60 seconds to improve performance
     """
     try:
         user = request.user
@@ -689,9 +698,11 @@ def get_unread_messages(request):
 
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
+@cache_page(60)  # Cache for 60 seconds
 def get_user_inbox(request):
     """
     Get user's inbox with unread messages and threading information
+    This view is cached for 60 seconds to improve performance
     """
     try:
         user = request.user
