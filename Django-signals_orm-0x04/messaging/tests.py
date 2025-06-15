@@ -1519,7 +1519,7 @@ class MessageViewSetTests(TestCase):
 
         # Use the viewset's create action to test perform_create
         response = client.post(
-            "/api/messaging/api/messages/",
+            "/api/messaging/messages/",
             {"receiver": self.user2.pk, "content": "Test message"},
         )
 
@@ -1577,7 +1577,7 @@ class MessageViewSetTests(TestCase):
         client.force_authenticate(user=self.user1)
 
         response = client.post(
-            "/api/messaging/api/messages/create/",
+            "/api/messaging/messages/create/",
             {"receiver": self.user2.pk, "content": "Test message via create endpoint"},
         )
 
@@ -1604,7 +1604,7 @@ class MessageViewSetTests(TestCase):
         client.force_authenticate(user=self.user2)  # User2 will reply
 
         response = client.post(
-            f"/api/messaging/api/messages/{root_message.message_id}/reply/",
+            f"/api/messaging/messages/{root_message.message_id}/reply/",
             {"receiver": self.user1.pk, "content": "Reply message"},
         )
 
@@ -1618,3 +1618,371 @@ class MessageViewSetTests(TestCase):
         self.assertEqual(reply.receiver, self.user1)
         self.assertEqual(reply.parent_message, root_message)
         self.assertEqual(reply.content, "Reply message")
+
+
+class UnreadMessagesTests(TestCase):
+    """Test cases for unread message functionality with custom manager"""
+
+    def setUp(self):
+        """Set up test data"""
+        self.user1 = User.objects.create_user(
+            username="user1", email="user1@example.com", password="testpass123"
+        )
+        self.user2 = User.objects.create_user(
+            username="user2", email="user2@example.com", password="testpass123"
+        )
+        self.user3 = User.objects.create_user(
+            username="user3", email="user3@example.com", password="testpass123"
+        )
+
+    def test_unread_messages_manager_for_user(self):
+        """Test UnreadMessagesManager.for_user method"""
+        # Create messages - some read, some unread
+        msg1 = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Message 1", is_read=False
+        )
+        msg2 = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Message 2", is_read=True
+        )
+        msg3 = Message.objects.create(
+            sender=self.user3, receiver=self.user2, content="Message 3", is_read=False
+        )
+        msg4 = Message.objects.create(
+            sender=self.user2, receiver=self.user1, content="Message 4", is_read=False
+        )
+
+        # Test unread messages for user2
+        unread_messages = Message.unread_messages.for_user(self.user2)
+        unread_ids = [msg.message_id for msg in unread_messages]
+
+        self.assertEqual(len(unread_ids), 2)
+        self.assertIn(msg1.message_id, unread_ids)
+        self.assertIn(msg3.message_id, unread_ids)
+        self.assertNotIn(msg2.message_id, unread_ids)  # This one is read
+        self.assertNotIn(msg4.message_id, unread_ids)  # This one is for user1
+
+    def test_unread_messages_manager_inbox_for_user(self):
+        """Test UnreadMessagesManager.inbox_for_user method"""
+        # Create a thread with unread messages
+        root_msg = Message.objects.create(
+            sender=self.user1,
+            receiver=self.user2,
+            content="Root message",
+            is_read=False,
+        )
+        reply_msg = Message.objects.create(
+            sender=self.user2,
+            receiver=self.user1,
+            content="Reply",
+            parent_message=root_msg,
+            is_read=False,
+        )
+
+        # Test inbox for user2
+        inbox_messages = Message.unread_messages.inbox_for_user(self.user2)
+
+        self.assertEqual(len(inbox_messages), 1)
+        self.assertEqual(inbox_messages[0].message_id, root_msg.message_id)
+        self.assertEqual(inbox_messages[0].parent_message, None)  # Root message
+
+    def test_unread_count_for_user(self):
+        """Test UnreadMessagesManager.unread_count_for_user method"""
+        # Create messages
+        Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Message 1", is_read=False
+        )
+        Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Message 2", is_read=True
+        )
+        Message.objects.create(
+            sender=self.user3, receiver=self.user2, content="Message 3", is_read=False
+        )
+
+        count = Message.unread_messages.unread_count_for_user(self.user2)
+        self.assertEqual(count, 2)
+
+    def test_unread_threads_for_user(self):
+        """Test UnreadMessagesManager.unread_threads_for_user method"""
+        # Create thread messages
+        root_msg = Message.objects.create(
+            sender=self.user1,
+            receiver=self.user2,
+            content="Root message",
+            is_read=False,
+        )
+        reply_msg = Message.objects.create(
+            sender=self.user2,
+            receiver=self.user1,
+            content="Reply",
+            parent_message=root_msg,
+            is_read=False,
+        )
+        standalone_msg = Message.objects.create(
+            sender=self.user3, receiver=self.user2, content="Standalone", is_read=False
+        )
+
+        # Test unread threads for user2
+        unread_threads = Message.unread_messages.unread_threads_for_user(self.user2)
+        thread_ids = [msg.message_id for msg in unread_threads]
+
+        self.assertEqual(len(thread_ids), 2)
+        self.assertIn(root_msg.message_id, thread_ids)
+        self.assertIn(standalone_msg.message_id, thread_ids)
+        self.assertNotIn(reply_msg.message_id, thread_ids)  # This is not a root message
+
+    def test_query_optimization_with_only(self):
+        """Test that the custom manager uses .only() for query optimization"""
+        Message.objects.create(
+            sender=self.user1,
+            receiver=self.user2,
+            content="Test message",
+            is_read=False,
+        )
+
+        # Test that only specific fields are loaded
+        unread_messages = Message.unread_messages.for_user(self.user2)
+
+        # This should work without additional queries
+        with self.assertNumQueries(1):
+            for msg in unread_messages:
+                # These fields should be available without additional queries
+                self.assertIsNotNone(msg.message_id)
+                self.assertIsNotNone(msg.content)
+                self.assertIsNotNone(msg.timestamp)
+                self.assertIsNotNone(msg.sender.username)
+
+
+class UnreadMessagesAPITests(TestCase):
+    """Test cases for unread message API endpoints"""
+
+    def setUp(self):
+        """Set up test data"""
+        self.user1 = User.objects.create_user(
+            username="user1", email="user1@example.com", password="testpass123"
+        )
+        self.user2 = User.objects.create_user(
+            username="user2", email="user2@example.com", password="testpass123"
+        )
+
+        # Create test messages
+        self.msg1 = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Message 1", is_read=False
+        )
+        self.msg2 = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Message 2", is_read=True
+        )
+        self.msg3 = Message.objects.create(
+            sender=self.user2, receiver=self.user1, content="Message 3", is_read=False
+        )
+
+    def test_unread_messages_viewset_action(self):
+        """Test the unread messages ViewSet action"""
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.force_authenticate(user=self.user2)
+
+        response = client.get("/api/messaging/messages/unread/")
+
+        self.assertEqual(response.status_code, 200)
+
+        # Check that only unread messages for user2 are returned
+        messages = (
+            response.json()["results"]
+            if "results" in response.json()
+            else response.json()
+        )
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0]["content"], "Message 1")
+
+    def test_inbox_viewset_action(self):
+        """Test the inbox ViewSet action"""
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.force_authenticate(user=self.user2)
+
+        response = client.get("/api/messaging/messages/inbox/")
+
+        self.assertEqual(response.status_code, 200)
+
+        # Check that inbox returns unread messages
+        messages = (
+            response.json()["results"]
+            if "results" in response.json()
+            else response.json()
+        )
+        self.assertEqual(len(messages), 1)
+
+    def test_unread_count_viewset_action(self):
+        """Test the unread count ViewSet action"""
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.force_authenticate(user=self.user2)
+
+        response = client.get("/api/messaging/messages/unread_count/")
+
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        self.assertEqual(data["unread_count"], 1)
+        self.assertEqual(data["user"], "user2")
+
+    def test_mark_message_read_viewset_action(self):
+        """Test marking a message as read via ViewSet action"""
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.force_authenticate(user=self.user2)
+
+        response = client.patch(
+            f"/api/messaging/messages/{self.msg1.message_id}/mark_read/"
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        # Verify message is marked as read
+        self.msg1.refresh_from_db()
+        self.assertTrue(self.msg1.is_read)
+
+    def test_mark_all_read_viewset_action(self):
+        """Test marking all messages as read via ViewSet action"""
+        from rest_framework.test import APIClient
+
+        # Create another unread message
+        Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Message 4", is_read=False
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=self.user2)
+
+        response = client.patch("/api/messaging/mark-all-read/")
+
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        self.assertEqual(data["count"], 2)  # Should have marked 2 messages as read
+
+        # Verify messages are marked as read
+        unread_count = Message.unread_messages.unread_count_for_user(self.user2)
+        self.assertEqual(unread_count, 0)
+
+    def test_get_unread_messages_function_view(self):
+        """Test the get_unread_messages function-based view"""
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.force_authenticate(user=self.user2)
+
+        response = client.get("/api/messaging/unread-messages/")
+
+        self.assertEqual(response.status_code, 200)
+
+        # Check response structure
+        if "results" in response.json():
+            messages = response.json()["results"]
+        else:
+            messages = response.json()
+
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0]["content"], "Message 1")
+
+    def test_mark_message_read_function_view(self):
+        """Test the mark_message_read function-based view"""
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.force_authenticate(user=self.user2)
+
+        response = client.patch(
+            f"/api/messaging/messages/{self.msg1.message_id}/mark-read/"
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        # Verify message is marked as read
+        self.msg1.refresh_from_db()
+        self.assertTrue(self.msg1.is_read)
+
+    def test_get_unread_count_function_view(self):
+        """Test the get_unread_count function-based view"""
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.force_authenticate(user=self.user2)
+
+        response = client.get("/api/messaging/unread-count/")
+
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        self.assertEqual(data["unread_count"], 1)
+        self.assertEqual(data["user"], "user2")
+
+    def test_permission_denied_for_other_users_messages(self):
+        """Test that users can't mark other users' messages as read"""
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.force_authenticate(
+            user=self.user1
+        )  # user1 trying to mark user2's message
+
+        response = client.patch(
+            f"/api/messaging/messages/{self.msg1.message_id}/mark-read/"
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+        # Verify message is still unread
+        self.msg1.refresh_from_db()
+        self.assertFalse(self.msg1.is_read)
+
+
+class UnreadMessagesPerformanceTests(TestCase):
+    """Test cases for unread message performance optimization"""
+
+    def setUp(self):
+        """Set up test data"""
+        self.user1 = User.objects.create_user(
+            username="user1", email="user1@example.com", password="testpass123"
+        )
+        self.user2 = User.objects.create_user(
+            username="user2", email="user2@example.com", password="testpass123"
+        )
+
+        # Create multiple messages for performance testing
+        for i in range(10):
+            Message.objects.create(
+                sender=self.user1,
+                receiver=self.user2,
+                content=f"Message {i}",
+                is_read=False,
+            )
+
+    def test_unread_messages_query_count(self):
+        """Test that unread messages queries are optimized"""
+        # Test that fetching unread messages with related data uses minimal queries
+        with self.assertNumQueries(1):  # Should only need 1 query due to select_related
+            unread_messages = list(Message.unread_messages.for_user(self.user2))
+
+            # Access related fields that should be prefetched
+            for msg in unread_messages:
+                self.assertIsNotNone(msg.sender.username)
+
+    def test_inbox_query_optimization(self):
+        """Test that inbox queries are optimized with select_related"""
+        with self.assertNumQueries(1):  # Should only need 1 query
+            inbox_messages = list(Message.unread_messages.inbox_for_user(self.user2))
+
+            # Access related fields
+            for msg in inbox_messages:
+                self.assertIsNotNone(msg.sender.username)
+
+    def test_unread_count_query_optimization(self):
+        """Test that unread count uses optimized query"""
+        with self.assertNumQueries(1):  # Should only need 1 query for count
+            count = Message.unread_messages.unread_count_for_user(self.user2)
+            self.assertEqual(count, 10)

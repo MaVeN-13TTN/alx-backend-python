@@ -11,20 +11,30 @@ router.register(r"notifications", views.NotificationViewSet, basename="notificat
 
 urlpatterns = [
     # ViewSet routes
-    path("api/", include(router.urls)),
+    path("", include(router.urls)),
     # Custom message creation endpoint
-    path("api/messages/create/", views.create_message, name="create_message"),
+    path("messages/create/", views.create_message, name="create_message"),
     # Custom threading endpoints
     path(
-        "api/messages/<uuid:message_id>/thread/",
+        "messages/<uuid:message_id>/thread/",
         views.get_message_thread,
         name="message_thread",
     ),
     path(
-        "api/messages/<uuid:message_id>/reply/",
+        "messages/<uuid:message_id>/reply/",
         views.reply_to_message,
         name="reply_to_message",
     ),
+    # Unread messages endpoints - using different paths to avoid conflicts with ViewSet
+    path("unread-messages/", views.get_unread_messages, name="unread_messages"),
+    path("user-inbox/", views.get_user_inbox, name="user_inbox"),
+    path("unread-count/", views.get_unread_count, name="unread_count"),
+    path(
+        "messages/<uuid:message_id>/mark-read/",
+        views.mark_message_read,
+        name="mark_message_read",
+    ),
+    path("mark-all-read/", views.mark_all_messages_read, name="mark_all_messages_read"),
     # User account deletion endpoints
     path("user/delete/", views.delete_user_account, name="delete_user_account"),
     path(

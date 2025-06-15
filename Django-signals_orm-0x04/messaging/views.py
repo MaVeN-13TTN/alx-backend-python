@@ -147,6 +147,114 @@ class MessageViewSet(viewsets.ModelViewSet):
         )
         return Response(serializer.data)
 
+    @action(detail=False, methods=["get"])
+    def unread(self, request):
+        """
+        Get unread messages for the authenticated user using custom manager
+        """
+        user = request.user
+        unread_messages = Message.unread_messages.for_user(user)
+
+        page = self.paginate_queryset(unread_messages)
+        if page is not None:
+            serializer = MessageListSerializer(
+                page, many=True, context={"request": request}
+            )
+            return self.get_paginated_response(serializer.data)
+
+        serializer = MessageListSerializer(
+            unread_messages, many=True, context={"request": request}
+        )
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"])
+    def inbox(self, request):
+        """
+        Get user's inbox with unread messages and threading info
+        """
+        user = request.user
+        inbox_messages = Message.unread_messages.inbox_for_user(user)
+
+        page = self.paginate_queryset(inbox_messages)
+        if page is not None:
+            serializer = MessageListSerializer(
+                page, many=True, context={"request": request}
+            )
+            return self.get_paginated_response(serializer.data)
+
+        serializer = MessageListSerializer(
+            inbox_messages, many=True, context={"request": request}
+        )
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"])
+    def unread_count(self, request):
+        """
+        Get count of unread messages for the authenticated user
+        """
+        user = request.user
+        count = Message.unread_messages.unread_count_for_user(user)
+
+        return Response({"unread_count": count, "user": user.username})
+
+    @action(detail=False, methods=["get"])
+    def unread_threads(self, request):
+        """
+        Get unread thread starter messages for the authenticated user
+        """
+        user = request.user
+        unread_threads = Message.unread_messages.unread_threads_for_user(user)
+
+        page = self.paginate_queryset(unread_threads)
+        if page is not None:
+            serializer = MessageListSerializer(
+                page, many=True, context={"request": request}
+            )
+            return self.get_paginated_response(serializer.data)
+
+        serializer = MessageListSerializer(
+            unread_threads, many=True, context={"request": request}
+        )
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["patch"])
+    def mark_read(self, request, pk=None):
+        """
+        Mark a message as read
+        """
+        message = self.get_object()
+
+        # Only allow receiver to mark message as read
+        if request.user != message.receiver:
+            return Response(
+                {"error": "You can only mark your own received messages as read"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        message.is_read = True
+        message.save(update_fields=["is_read"])
+
+        serializer = self.get_serializer(message)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["patch"])
+    def mark_all_read(self, request):
+        """
+        Mark all unread messages as read for the authenticated user
+        """
+        user = request.user
+        updated_count = Message.objects.filter(receiver=user, is_read=False).update(
+            is_read=True
+        )
+
+        return Response(
+            {
+                "message": f"Marked {updated_count} messages as read",
+                "count": updated_count,
+                "user": user.username,
+            }
+        )
+
     def perform_create(self, serializer):
         """
         Set the sender to the current authenticated user when creating a message
@@ -518,6 +626,144 @@ def create_message(request):
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def get_unread_messages(request):
+    """
+    Get unread messages for the authenticated user using custom manager
+    """
+    try:
+        user = request.user
+        unread_messages = Message.unread_messages.for_user(user)
+
+        # Apply pagination
+        paginator = MessagePagination()
+        page = paginator.paginate_queryset(unread_messages, request)
+
+        if page is not None:
+            serializer = MessageListSerializer(
+                page, many=True, context={"request": request}
+            )
+            return paginator.get_paginated_response(serializer.data)
+
+        serializer = MessageListSerializer(
+            unread_messages, many=True, context={"request": request}
+        )
+        return Response(serializer.data)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def get_user_inbox(request):
+    """
+    Get user's inbox with unread messages and threading information
+    """
+    try:
+        user = request.user
+        inbox_messages = Message.unread_messages.inbox_for_user(user)
+
+        # Apply pagination
+        paginator = MessagePagination()
+        page = paginator.paginate_queryset(inbox_messages, request)
+
+        if page is not None:
+            serializer = MessageListSerializer(
+                page, many=True, context={"request": request}
+            )
+            return paginator.get_paginated_response(serializer.data)
+
+        serializer = MessageListSerializer(
+            inbox_messages, many=True, context={"request": request}
+        )
+        return Response(
+            {
+                "inbox": serializer.data,
+                "unread_count": Message.unread_messages.unread_count_for_user(user),
+                "user": user.username,
+            }
+        )
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["PATCH"])
+@permission_classes([permissions.IsAuthenticated])
+def mark_message_read(request, message_id):
+    """
+    Mark a specific message as read
+    """
+    try:
+        message = get_object_or_404(
+            Message.objects.select_related("sender", "receiver"), message_id=message_id
+        )
+
+        # Only allow receiver to mark message as read
+        if request.user != message.receiver:
+            return Response(
+                {"error": "You can only mark your own received messages as read"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if message.is_read:
+            return Response(
+                {"message": "Message is already marked as read"},
+                status=status.HTTP_200_OK,
+            )
+
+        message.is_read = True
+        message.save(update_fields=["is_read"])
+
+        serializer = MessageSerializer(message, context={"request": request})
+        return Response({"message": "Message marked as read", "data": serializer.data})
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["PATCH"])
+@permission_classes([permissions.IsAuthenticated])
+def mark_all_messages_read(request):
+    """
+    Mark all unread messages as read for the authenticated user
+    """
+    try:
+        user = request.user
+        updated_count = Message.objects.filter(receiver=user, is_read=False).update(
+            is_read=True
+        )
+
+        return Response(
+            {
+                "message": f"Marked {updated_count} messages as read",
+                "count": updated_count,
+                "user": user.username,
+            }
+        )
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def get_unread_count(request):
+    """
+    Get count of unread messages for the authenticated user
+    """
+    try:
+        user = request.user
+        count = Message.unread_messages.unread_count_for_user(user)
+
+        return Response({"unread_count": count, "user": user.username})
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
