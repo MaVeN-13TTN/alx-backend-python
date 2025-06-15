@@ -1013,3 +1013,483 @@ class UserDeletionAPITests(TestCase):
         # This would test the password confirmation endpoint
         # Placeholder for API testing structure
         self.assertTrue(True)  # Placeholder assertion
+
+
+class MessageThreadingTests(TestCase):
+    """
+    Test cases for message threading functionality
+    """
+
+    def setUp(self):
+        """
+        Set up test users and messages for threading tests
+        """
+        self.user1 = User.objects.create_user(
+            username="user1", email="user1@example.com", password="testpass123"
+        )
+        self.user2 = User.objects.create_user(
+            username="user2", email="user2@example.com", password="testpass123"
+        )
+        self.user3 = User.objects.create_user(
+            username="user3", email="user3@example.com", password="testpass123"
+        )
+
+    def test_message_thread_creation(self):
+        """
+        Test creating a threaded conversation
+        """
+        # Create root message
+        root_message = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="This is the root message"
+        )
+
+        # Create first reply
+        reply1 = Message.objects.create(
+            sender=self.user2,
+            receiver=self.user1,
+            content="This is a reply to the root message",
+            parent_message=root_message,
+        )
+
+        # Create nested reply
+        reply2 = Message.objects.create(
+            sender=self.user1,
+            receiver=self.user2,
+            content="This is a reply to the first reply",
+            parent_message=reply1,
+        )
+
+        # Test threading properties
+        self.assertFalse(root_message.is_reply)
+        self.assertTrue(root_message.is_thread_starter)
+        self.assertEqual(root_message.thread_depth, 0)
+
+        self.assertTrue(reply1.is_reply)
+        self.assertFalse(reply1.is_thread_starter)
+        self.assertEqual(reply1.thread_depth, 1)
+
+        self.assertTrue(reply2.is_reply)
+        self.assertFalse(reply2.is_thread_starter)
+        self.assertEqual(reply2.thread_depth, 2)
+
+    def test_root_message_property(self):
+        """
+        Test that root_message property returns the correct root message
+        """
+        # Create a deep thread
+        root = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Root message"
+        )
+
+        reply1 = Message.objects.create(
+            sender=self.user2,
+            receiver=self.user1,
+            content="Reply 1",
+            parent_message=root,
+        )
+
+        reply2 = Message.objects.create(
+            sender=self.user1,
+            receiver=self.user2,
+            content="Reply 2",
+            parent_message=reply1,
+        )
+
+        reply3 = Message.objects.create(
+            sender=self.user2,
+            receiver=self.user1,
+            content="Reply 3",
+            parent_message=reply2,
+        )
+
+        # All messages should point to the same root
+        self.assertEqual(root.root_message, root)
+        self.assertEqual(reply1.root_message, root)
+        self.assertEqual(reply2.root_message, root)
+        self.assertEqual(reply3.root_message, root)
+
+    def test_get_thread_messages(self):
+        """
+        Test retrieving all messages in a thread
+        """
+        # Create a branched thread
+        root = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Root message"
+        )
+
+        # Branch 1
+        reply1a = Message.objects.create(
+            sender=self.user2,
+            receiver=self.user1,
+            content="Reply 1A",
+            parent_message=root,
+        )
+
+        reply2a = Message.objects.create(
+            sender=self.user1,
+            receiver=self.user2,
+            content="Reply 2A",
+            parent_message=reply1a,
+        )
+
+        # Branch 2
+        reply1b = Message.objects.create(
+            sender=self.user3,
+            receiver=self.user1,
+            content="Reply 1B",
+            parent_message=root,
+        )
+
+        # Get all thread messages from any message in the thread
+        thread_messages_from_root = list(root.get_thread_messages())
+        thread_messages_from_reply = list(reply2a.get_thread_messages())
+
+        # Should get all 4 messages regardless of starting point
+        self.assertEqual(len(thread_messages_from_root), 4)
+        self.assertEqual(len(thread_messages_from_reply), 4)
+
+        # Should contain all our messages
+        message_ids = [msg.message_id for msg in thread_messages_from_root]
+        self.assertIn(root.message_id, message_ids)
+        self.assertIn(reply1a.message_id, message_ids)
+        self.assertIn(reply2a.message_id, message_ids)
+        self.assertIn(reply1b.message_id, message_ids)
+
+    def test_get_all_replies(self):
+        """
+        Test retrieving all replies to a message
+        """
+        root = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Root message"
+        )
+
+        reply1 = Message.objects.create(
+            sender=self.user2,
+            receiver=self.user1,
+            content="Reply 1",
+            parent_message=root,
+        )
+
+        reply2 = Message.objects.create(
+            sender=self.user1,
+            receiver=self.user2,
+            content="Reply 2",
+            parent_message=reply1,
+        )
+
+        reply3 = Message.objects.create(
+            sender=self.user3,
+            receiver=self.user1,
+            content="Reply 3",
+            parent_message=root,
+        )
+
+        # Get all replies to root message
+        all_replies = list(root.get_all_replies())
+        self.assertEqual(len(all_replies), 3)
+
+        # Get all replies to first reply
+        reply1_replies = list(reply1.get_all_replies())
+        self.assertEqual(len(reply1_replies), 1)
+        self.assertEqual(reply1_replies[0], reply2)
+
+    def test_get_direct_replies(self):
+        """
+        Test retrieving only direct replies to a message
+        """
+        root = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Root message"
+        )
+
+        reply1 = Message.objects.create(
+            sender=self.user2,
+            receiver=self.user1,
+            content="Direct reply 1",
+            parent_message=root,
+        )
+
+        reply2 = Message.objects.create(
+            sender=self.user3,
+            receiver=self.user1,
+            content="Direct reply 2",
+            parent_message=root,
+        )
+
+        # This should not be included in direct replies to root
+        nested_reply = Message.objects.create(
+            sender=self.user1,
+            receiver=self.user2,
+            content="Nested reply",
+            parent_message=reply1,
+        )
+
+        direct_replies = list(root.get_direct_replies())
+        self.assertEqual(len(direct_replies), 2)
+
+        direct_reply_ids = [msg.message_id for msg in direct_replies]
+        self.assertIn(reply1.message_id, direct_reply_ids)
+        self.assertIn(reply2.message_id, direct_reply_ids)
+        self.assertNotIn(nested_reply.message_id, direct_reply_ids)
+
+    def test_get_reply_count(self):
+        """
+        Test getting the total reply count for a message
+        """
+        root = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Root message"
+        )
+
+        # No replies initially
+        self.assertEqual(root.get_reply_count(), 0)
+
+        # Add some replies
+        reply1 = Message.objects.create(
+            sender=self.user2,
+            receiver=self.user1,
+            content="Reply 1",
+            parent_message=root,
+        )
+
+        reply2 = Message.objects.create(
+            sender=self.user1,
+            receiver=self.user2,
+            content="Reply 2",
+            parent_message=reply1,
+        )
+
+        reply3 = Message.objects.create(
+            sender=self.user3,
+            receiver=self.user1,
+            content="Reply 3",
+            parent_message=root,
+        )
+
+        # Should count all replies (direct and nested)
+        self.assertEqual(root.get_reply_count(), 3)
+        self.assertEqual(reply1.get_reply_count(), 1)
+        self.assertEqual(reply2.get_reply_count(), 0)
+
+    def test_can_reply_to_permissions(self):
+        """
+        Test the can_reply_to method for permission checking
+        """
+        # Create a conversation between user1 and user2
+        root = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Root message"
+        )
+
+        # Both participants should be able to reply
+        self.assertTrue(root.can_reply_to(self.user1))
+        self.assertTrue(root.can_reply_to(self.user2))
+
+        # Third party user should not be able to reply
+        self.assertFalse(root.can_reply_to(self.user3))
+
+        # Create a reply
+        reply = Message.objects.create(
+            sender=self.user2, receiver=self.user1, content="Reply", parent_message=root
+        )
+
+        # Same rules should apply to replies
+        self.assertTrue(reply.can_reply_to(self.user1))
+        self.assertTrue(reply.can_reply_to(self.user2))
+        self.assertFalse(reply.can_reply_to(self.user3))
+
+    def test_threading_with_signals(self):
+        """
+        Test that threading works correctly with notification signals
+        """
+        # Create root message - should create notification
+        root = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Root message"
+        )
+
+        # Check notification was created
+        notifications = Notification.objects.filter(user=self.user2)
+        self.assertEqual(notifications.count(), 1)
+
+        # Create reply - should create notification
+        reply = Message.objects.create(
+            sender=self.user2, receiver=self.user1, content="Reply", parent_message=root
+        )
+
+        # Check notification was created for the reply
+        notifications = Notification.objects.filter(user=self.user1)
+        self.assertEqual(notifications.count(), 1)
+
+    def test_threading_query_optimization(self):
+        """
+        Test that threading queries are optimized with select_related and prefetch_related
+        """
+        # Create a thread with multiple messages
+        root = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Root message"
+        )
+
+        for i in range(5):
+            Message.objects.create(
+                sender=self.user2 if i % 2 else self.user1,
+                receiver=self.user1 if i % 2 else self.user2,
+                content=f"Reply {i}",
+                parent_message=root,
+            )
+
+        # Test that get_thread_messages uses optimized queries
+        with self.assertNumQueries(
+            4
+        ):  # Expect reasonable number of queries for thread traversal
+            thread_messages = list(root.get_thread_messages())
+            # Access related fields to ensure they're prefetched
+            for msg in thread_messages:
+                _ = msg.sender.username
+                _ = msg.receiver.username
+                if msg.parent_message:
+                    _ = msg.parent_message.content
+
+    def test_message_deletion_in_thread(self):
+        """
+        Test that deleting a message in a thread works correctly
+        """
+        root = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Root message"
+        )
+
+        reply1 = Message.objects.create(
+            sender=self.user2,
+            receiver=self.user1,
+            content="Reply 1",
+            parent_message=root,
+        )
+
+        reply2 = Message.objects.create(
+            sender=self.user1,
+            receiver=self.user2,
+            content="Reply 2",
+            parent_message=reply1,
+        )
+
+        # Delete the middle message
+        reply1.delete()
+
+        # Root should still exist
+        self.assertTrue(Message.objects.filter(message_id=root.message_id).exists())
+
+        # reply2 should be deleted due to CASCADE
+        self.assertFalse(Message.objects.filter(message_id=reply2.message_id).exists())
+
+    def test_user_deletion_cleans_up_threads(self):
+        """
+        Test that deleting a user cleans up their threaded messages
+        """
+        # Create a thread involving the user
+        root = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Root message"
+        )
+
+        reply = Message.objects.create(
+            sender=self.user2, receiver=self.user1, content="Reply", parent_message=root
+        )
+
+        # Count messages before deletion
+        initial_count = Message.objects.count()
+        user1_id = self.user1.pk  # Store the ID before deletion
+
+        # Delete user1
+        self.user1.delete()
+
+        # All messages involving user1 should be deleted
+        remaining_messages = Message.objects.count()
+        self.assertLess(remaining_messages, initial_count)
+
+        # No messages should reference the deleted user (can't query with deleted instance)
+        self.assertFalse(Message.objects.filter(sender_id=user1_id).exists())
+        self.assertFalse(Message.objects.filter(receiver_id=user1_id).exists())
+
+
+class MessageThreadingAPITests(TestCase):
+    """
+    Test cases for the threaded messaging API endpoints
+    """
+
+    def setUp(self):
+        """
+        Set up test data for API tests
+        """
+        self.user1 = User.objects.create_user(
+            username="apiuser1", email="api1@example.com", password="testpass123"
+        )
+        self.user2 = User.objects.create_user(
+            username="apiuser2", email="api2@example.com", password="testpass123"
+        )
+
+    def test_message_serializer_threading_fields(self):
+        """
+        Test that message serializer includes threading fields
+        """
+        from .serializers import MessageSerializer
+
+        root = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Root message"
+        )
+
+        reply = Message.objects.create(
+            sender=self.user2, receiver=self.user1, content="Reply", parent_message=root
+        )
+
+        # Test root message serialization
+        root_serializer = MessageSerializer(root)
+        root_data = root_serializer.data
+
+        self.assertIn("is_reply", root_data)
+        self.assertIn("is_thread_starter", root_data)
+        self.assertIn("thread_depth", root_data)
+        self.assertIn("reply_count", root_data)
+
+        self.assertFalse(root_data["is_reply"])
+        self.assertTrue(root_data["is_thread_starter"])
+        self.assertEqual(root_data["thread_depth"], 0)
+        self.assertEqual(root_data["reply_count"], 1)
+
+        # Test reply serialization
+        reply_serializer = MessageSerializer(reply)
+        reply_data = reply_serializer.data
+
+        self.assertTrue(reply_data["is_reply"])
+        self.assertFalse(reply_data["is_thread_starter"])
+        self.assertEqual(reply_data["thread_depth"], 1)
+        self.assertEqual(reply_data["reply_count"], 0)
+        self.assertIsNotNone(reply_data["parent_message"])
+
+    def test_create_message_serializer_with_parent(self):
+        """
+        Test creating a message with parent_message_id
+        """
+        from .serializers import CreateMessageSerializer
+
+        root = Message.objects.create(
+            sender=self.user1, receiver=self.user2, content="Root message"
+        )
+
+        # Mock request object
+        class MockRequest:
+            def __init__(self, user):
+                self.user = user
+
+        mock_request = MockRequest(self.user2)
+
+        serializer_data = {
+            "receiver": self.user1.pk,
+            "content": "This is a reply",
+            "parent_message_id": root.message_id,
+        }
+
+        serializer = CreateMessageSerializer(
+            data=serializer_data, context={"request": mock_request}
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        reply = serializer.save()
+
+        self.assertEqual(reply.parent_message, root)
+        self.assertTrue(reply.is_reply)
+        self.assertEqual(reply.thread_depth, 1)
