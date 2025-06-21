@@ -1,0 +1,43 @@
+# Git
+.git
+.gitignore
+
+# Virtual environment
+venv/
+env/
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Django
+*.log
+db.sqlite3
+media/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+README.md
+*.md
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Deployment
+Dockerfile
+.dockerignore
