@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: django-app-deployment
+  labels:
+    app: django
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: django
+  template:
+    metadata:
+      labels:
+        app: django
+    spec:
+      containers:
+      - name: messaging-app
+        # IMPORTANT: Replace this with the actual name of your Docker image
+        # e.g., your-dockerhub-username/messaging-app:latest
+        image: django-messaging-app:latest
+        # This policy ensures the image is pulled only if not present locally,
+        # which is useful for local development with Minikube.
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+        # Best Practice: Define resource requests and limits
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: django-app-service
+spec:
+  # Exposes the service on a cluster-internal IP.
+  type: ClusterIP
+  selector:
+    # This must match the labels on the pods defined in the Deployment
+    app: django
+  ports:
+    - protocol: TCP
+      # Port on which the service is exposed
+      port: 8000
+      # Port on the pod to which traffic is sent
+      targetPort: 8000 
