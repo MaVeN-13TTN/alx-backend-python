@@ -1,0 +1,85 @@
+#!/bin/bash
+
+# This script scales the Django application deployment, verifies the new pods,
+# performs a load test, and monitors resource usage.
+
+# Exit immediately if a command exits with a non-zero status.
+set -e
+
+# --- Configuration ---
+DEPLOYMENT_NAME="django-app-deployment"
+SERVICE_NAME="django-app-service"
+REPLICA_COUNT=3
+LOAD_TEST_DURATION="30s"
+LOAD_TEST_THREADS=4
+LOAD_TEST_CONNECTIONS=200
+KUBECTL="minikube kubectl --"
+
+# --- Prerequisite Check ---
+echo "Checking for 'wrk'..."
+if ! command -v wrk &> /dev/null; then
+    echo "Error: 'wrk' is not installed and is required for load testing."
+    echo "On Debian/Ubuntu, you can install it with: sudo apt-get update && sudo apt-get install wrk"
+    exit 1
+fi
+echo "'wrk' is installed."
+
+# --- Scaling ---
+echo -e "
+>>> Scaling deployment '$DEPLOYMENT_NAME' to $REPLICA_COUNT replicas..."
+$KUBECTL scale deployment/$DEPLOYMENT_NAME --replicas=$REPLICA_COUNT
+
+# --- Verification ---
+echo -e "
+>>> Waiting for all replicas to be ready..."
+# The rollout status command waits for the deployment to complete.
+$KUBECTL rollout status deployment/$DEPLOYMENT_NAME
+echo -e "
+>>> Verification complete. All pods are running:"
+$KUBECTL get pods -l app=django -o wide
+
+# --- Monitoring Setup ---
+echo -e "
+>>> Checking and enabling Kubernetes metrics-server..."
+# The metrics-server is needed for 'kubectl top'.
+if ! minikube addons list | grep 'metrics-server: enabled' > /dev/null; then
+  echo "Metrics-server addon is not enabled. Enabling it now..."
+  minikube addons enable metrics-server
+  echo "Waiting for metrics-server to become available..."
+  sleep 45 # Give the addon time to start up and collect initial metrics.
+else
+  echo "Metrics-server is already enabled."
+fi
+
+echo -e "
+>>> Displaying initial resource usage:"
+$KUBECTL top pods -l app=django
+
+# --- Load Testing ---
+echo -e "
+>>> Preparing for load test by setting up port forwarding..."
+# Port-forward from localhost to the service inside the cluster.
+$KUBECTL port-forward service/$SERVICE_NAME 8080:8000 &
+PORT_FORWARD_PID=$!
+
+# Give the port-forwarding a moment to establish.
+sleep 5
+
+echo -e "
+>>> Starting load test with 'wrk' for $LOAD_TEST_DURATION..."
+echo "Target: http://127.0.0.1:8080/"
+wrk -t$LOAD_TEST_THREADS -c$LOAD_TEST_CONNECTIONS -d$LOAD_TEST_DURATION http://127.0.0.1:8080/
+
+# --- Final Monitoring ---
+echo -e "
+>>> Displaying resource usage after load test:"
+$KUBECTL top pods -l app=django
+
+# --- Cleanup ---
+echo -e "
+>>> Cleaning up port-forwarding process..."
+kill $PORT_FORWARD_PID
+echo "Port-forwarding stopped."
+
+echo -e "
+Script finished successfully." 
