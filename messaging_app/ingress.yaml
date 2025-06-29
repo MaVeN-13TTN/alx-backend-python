@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: django-app-ingress
+  annotations:
+    # This annotation is often used with NGINX Ingress to handle path rewriting,
+    # but for a simple root path ('/'), it's not strictly necessary.
+    # It's included here for demonstration.
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  # Using a placeholder hostname for local development.
+  # You will need to map this hostname to your Minikube IP in your /etc/hosts file.
+  - host: messaging-app.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            # This must match the name of the Service created in deployment.yaml
+            name: django-app-service
+            port:
+              # This must match the port exposed by the Service
+              number: 8000 

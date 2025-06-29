@@ -1,0 +1,5 @@
+# This command applies the Ingress resource configuration to the Kubernetes cluster.
+# The 'minikube kubectl --' prefix is used to ensure we are using the kubectl
+# instance that is configured to communicate with the Minikube cluster.
+
+minikube kubectl -- apply -f ingress.yaml 
