@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# This script starts a local Kubernetes cluster using Minikube,
+# verifies its status, and lists the available pods.
+# It uses the 'kubectl' bundled with Minikube.
+
+# Exit immediately if a command exits with a non-zero status.
+set -e
+
+# --- Prerequisite Check ---
+echo "Checking for Minikube..."
+
+if ! command -v minikube &> /dev/null; then
+    echo "Error: minikube is not installed."
+    echo "Please follow the installation guide at: https://minikube.sigs.k8s.io/docs/start/"
+    exit 1
+fi
+
+echo "Prerequisite is satisfied."
+echo "Note: This script will use the 'kubectl' bundled with Minikube."
+
+# --- Cluster Operations ---
+
+# Start the Minikube cluster if it is not already running
+if ! minikube status &> /dev/null; then
+    echo -e "
+>>> Starting Minikube cluster..."
+    minikube start
+else
+    echo -e "
+>>> Minikube cluster is already running."
+fi
+
+# Verify the cluster is running
+echo -e "
+>>> Verifying cluster information..."
+minikube kubectl -- cluster-info
+
+# Retrieve all available pods in all namespaces
+echo -e "
+>>> Listing all pods in the cluster..."
+minikube kubectl -- get pods --all-namespaces
+
+echo -e "
+Script finished successfully." 
