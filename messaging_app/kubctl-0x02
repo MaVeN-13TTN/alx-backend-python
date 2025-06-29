@@ -1,0 +1,77 @@
+#!/bin/bash
+
+# This script orchestrates a blue-green deployment strategy for the Django app.
+
+# Exit immediately if a command exits with a non-zero status.
+set -e
+
+# --- Configuration ---
+KUBECTL="minikube kubectl --"
+GREEN_DEPLOYMENT_NAME="django-app-deployment-green"
+
+# --- Deployment ---
+echo "--- Blue-Green Deployment Script ---"
+
+echo -e "
+>>> Step 1: Cleaning up previous deployments to ensure a fresh start."
+# The '--ignore-not-found' flag prevents errors if the resources don't exist.
+$KUBECTL delete deployment django-app-deployment-blue --ignore-not-found=true
+$KUBECTL delete deployment django-app-deployment-green --ignore-not-found=true
+# We re-apply the service to ensure it points to blue initially.
+$KUBECTL delete service django-app-service --ignore-not-found=true
+
+echo -e "
+>>> Step 2: Deploying the 'blue' version and the service."
+$KUBECTL apply -f kubeservice.yaml
+$KUBECTL apply -f blue_deployment.yaml
+echo "Waiting for 'blue' deployment to be ready..."
+$KUBECTL rollout status deployment/django-app-deployment-blue
+
+echo -e "
+>>> Step 3: Deploying the new 'green' version."
+$KUBECTL apply -f green_deployment.yaml
+echo "Waiting for 'green' deployment to be ready..."
+$KUBECTL rollout status deployment/$GREEN_DEPLOYMENT_NAME
+
+# --- Verification ---
+echo -e "
+>>> Step 4: Verifying the 'green' pods and checking logs for errors."
+echo "Listing all running 'django' pods:"
+$KUBECTL get pods -l app=django -o wide
+
+echo "Checking logs of one of the new 'green' pods..."
+# Get the name of the first pod in the green deployment.
+GREEN_POD_NAME=$($KUBECTL get pods -l app=django,version=green -o jsonpath='{.items[0].metadata.name}')
+$KUBECTL logs $GREEN_POD_NAME
+
+# --- Manual Traffic Switch ---
+echo -e "
+----------------------------------------------------------------------
+!!! ACTION REQUIRED: MANUAL TRAFFIC SWITCH !!!
+----------------------------------------------------------------------
+The 'green' deployment is now running alongside the 'blue' deployment.
+Live traffic is STILL being routed to the 'blue' version.
+
+To switch traffic to the 'green' version, you must manually update the service selector.
+Run the following command:
+
+kubectl patch service django-app-service -p '{\"spec\":{\"selector\":{\"version\":\"green\"}}}'
+
+After running the command, all new requests will go to the 'green' pods.
+Verify that the application is working as expected via the Ingress.
+
+----------------------------------------------------------------------
+"
+
+# --- Manual Cleanup ---
+echo -e "
+--- Post-Switch Cleanup ---
+Once you have verified that the 'green' deployment is stable, you can
+delete the old 'blue' deployment to free up resources.
+
+Run the following command to clean up:
+
+kubectl delete deployment django-app-deployment-blue
+
+Script finished.
+" 
