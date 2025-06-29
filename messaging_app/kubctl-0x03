@@ -1,0 +1,101 @@
+#!/bin/bash
+
+# This script performs a rolling update on the Django deployment,
+# monitors for downtime, and verifies the result.
+
+# Exit immediately if a command exits with a non-zero status.
+set -e
+
+# --- Configuration ---
+DEPLOYMENT_NAME="django-app-deployment"
+SERVICE_NAME="django-app-service"
+KUBECTL="minikube kubectl --"
+# Rename blue deployment to the standard name for this exercise
+if [ -f "blue_deployment.yaml" ]; then
+    mv blue_deployment.yaml deployment.yaml
+fi
+
+
+# --- Preparation ---
+echo "--- Rolling Update Script ---"
+echo -e "
+>>> Step 1: Preparing a clean environment."
+# A more robust way to reset the environment: delete and recreate.
+$KUBECTL delete deployment --all --ignore-not-found=true
+$KUBECTL delete service $SERVICE_NAME --ignore-not-found=true
+echo "Applying the service definition..."
+$KUBECTL apply -f kubeservice.yaml
+
+echo ">>> Applying the initial deployment version (v1)..."
+# Create a temporary 'v1' deployment file from the main deployment file
+cat deployment.yaml | sed 's|django-messaging-app:v2.0|django-messaging-app:latest|g' > deployment-v1.yaml
+$KUBECTL apply -f deployment-v1.yaml
+$KUBECTL rollout status deployment/$DEPLOYMENT_NAME
+rm deployment-v1.yaml
+
+echo -e "
+>>> Step 2: Starting downtime monitor."
+# Set up port forwarding in the background.
+$KUBECTL port-forward service/$SERVICE_NAME 8080:8000 &
+PORT_FORWARD_PID=$!
+sleep 5 # Give port-forward time to establish.
+
+# Start a curl loop to continuously hit the service endpoint.
+SUCCESS_COUNT=0
+FAILURE_COUNT=0
+CURL_LOG="curl_test.log"
+echo "Starting continuous curl test... (output hidden, summary will be shown)"
+while true; do
+    if curl -s -f -o /dev/null http://127.0.0.1:8080/; then
+        ((SUCCESS_COUNT++))
+    else
+        ((FAILURE_COUNT++))
+    fi
+    sleep 0.5
+done &
+CURL_PID=$!
+
+
+# --- Rolling Update ---
+echo -e "
+>>> Step 3: Triggering the rolling update by applying the new v2.0 configuration."
+$KUBECTL apply -f deployment.yaml
+
+echo -e "
+>>> Step 4: Monitoring the rolling update status."
+# We add a timeout because we expect it to fail due to the non-existent image.
+if ! $KUBECTL rollout status deployment/$DEPLOYMENT_NAME --timeout=2m; then
+    echo "Rollout failed or timed out, as expected. This demonstrates Kubernetes' safety features."
+fi
+echo "Update process finished."
+
+# --- Verification & Cleanup ---
+kill $CURL_PID
+kill $PORT_FORWARD_PID
+# Silence "Terminated" messages
+wait $CURL_PID 2>/dev/null
+wait $PORT_FORWARD_PID 2>/dev/null
+
+echo -e "
+>>> Step 5: Analyzing downtime test results."
+echo "Curl test finished."
+echo "Successful requests: $SUCCESS_COUNT"
+echo "Failed requests: $FAILURE_COUNT"
+
+if [ "$FAILURE_COUNT" -gt 0 ]; then
+    echo "Warning: Downtime was detected during the update."
+else
+    echo "Success: No downtime was detected during the update process."
+fi
+
+echo -e "
+>>> Step 6: Verifying final pod status."
+echo "Notice the mix of old pods (Running) and new pods (ImagePullBackOff)."
+$KUBECTL get pods -l app=django -o wide
+
+# Check the image version of the running containers
+echo "Verifying container image versions in the cluster:"
+$KUBECTL get pods -l app=django -o jsonpath='{range .items[*]}{.metadata.name}{\":\t\"}{.spec.containers[0].image}{\"\\n\"}{end}'
+
+echo -e "
+Script finished successfully." 

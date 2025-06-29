@@ -5,11 +5,9 @@ metadata:
 spec:
   type: ClusterIP
   selector:
-    # This selector determines which pods receive traffic.
-    # Initially, it points to the 'blue' deployment.
-    # To switch to the green deployment, you will change 'version' to 'green'.
+    # This selector now points to any pod with the 'app: django' label,
+    # regardless of its version. This is ideal for rolling updates.
     app: django
-    version: blue
   ports:
     - protocol: TCP
       port: 8000

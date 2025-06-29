@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: django-app-deployment
+  labels:
+    app: django
+spec:
+  replicas: 3
+  # Strategy is 'RollingUpdate' by default, but we specify it for clarity.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # maxUnavailable is the max number of pods that can be unavailable during the update.
+      maxUnavailable: 1
+      # maxSurge is the max number of pods that can be created over the desired number of pods.
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: django
+  template:
+    metadata:
+      labels:
+        app: django
+    spec:
+      containers:
+      - name: messaging-app
+        # This is the NEW version of the image that will trigger the update.
+        image: django-messaging-app:v2.0
+        # We assume a new image needs to be pulled.
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        # Best Practice: Define resource requests and limits
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: django-app-service
+spec:
+  # Exposes the service on a cluster-internal IP.
+  type: ClusterIP
+  selector:
+    # This must match the labels on the pods defined in the Deployment
+    app: django
+  ports:
+    - protocol: TCP
+      # Port on which the service is exposed
+      port: 8000
+      # Port on the pod to which traffic is sent
+      targetPort: 8000 

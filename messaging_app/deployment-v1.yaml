@@ -1,30 +1,33 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: django-app-deployment-blue
+  name: django-app-deployment
   labels:
     app: django
-    version: blue
 spec:
   replicas: 3
+  # Strategy is 'RollingUpdate' by default, but we specify it for clarity.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # maxUnavailable is the max number of pods that can be unavailable during the update.
+      maxUnavailable: 1
+      # maxSurge is the max number of pods that can be created over the desired number of pods.
+      maxSurge: 1
   selector:
     matchLabels:
       app: django
-      version: blue
   template:
     metadata:
       labels:
         app: django
-        version: blue
     spec:
       containers:
       - name: messaging-app
-        # IMPORTANT: Replace this with the actual name of your Docker image
-        # e.g., your-dockerhub-username/messaging-app:latest
+        # This is the NEW version of the image that will trigger the update.
         image: django-messaging-app:latest
-        # This policy ensures the image is pulled only if not present locally,
-        # which is useful for local development with Minikube.
-        imagePullPolicy: IfNotPresent
+        # We assume a new image needs to be pulled.
+        imagePullPolicy: Always
         ports:
         - containerPort: 8000
         # Best Practice: Define resource requests and limits
