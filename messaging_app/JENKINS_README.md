@@ -21,14 +21,26 @@ cd messaging_app
 - ShiningPanda Plugin
 - HTML Publisher Plugin
 - JUnit Plugin
+- **Docker Plugin**
+- **Docker Pipeline Plugin**
 
-### 4. Add GitHub Credentials
+### 4. Add Credentials
+
+#### GitHub Credentials
 
 1. Go to **Manage Jenkins** → **Manage Credentials**
 2. Add new **Username with password** credential
 3. ID: `github-credentials`
 4. Username: Your GitHub username
 5. Password: Your GitHub Personal Access Token
+
+#### Docker Hub Credentials
+
+1. Go to **Manage Jenkins** → **Manage Credentials**
+2. Add new **Username with password** credential
+3. ID: `dockerhub-credentials`
+4. Username: Your Docker Hub username
+5. Password: Your Docker Hub access token
 
 ### 5. Create Pipeline Job
 
@@ -48,35 +60,65 @@ Click **Build Now** to trigger the pipeline manually.
 
 Before running the Jenkins pipeline, test locally:
 
+### Basic Testing
+
 ```bash
 cd messaging_app
 ./run_tests_local.sh
 ```
 
+### Extended Testing with Docker
+
+```bash
+cd messaging_app
+./run_tests_with_docker.sh
+```
+
+### Docker Hub Setup
+
+```bash
+cd messaging_app
+./docker_setup_guide.sh
+```
+
+cd messaging_app
+./run_tests_local.sh
+
+```
+
 ## Pipeline Features
 
-✅ **Automated Testing**: Django unit tests and API tests  
-✅ **Code Coverage**: HTML reports with detailed coverage metrics  
-✅ **Parallel Execution**: Multiple test stages run simultaneously  
-✅ **Quality Checks**: Django system checks and syntax validation  
-✅ **Security Validation**: Django deployment checks  
+✅ **Automated Testing**: Django unit tests and API tests
+✅ **Code Coverage**: HTML reports with detailed coverage metrics
+✅ **Parallel Execution**: Multiple test stages run simultaneously
+✅ **Quality Checks**: Django system checks and syntax validation
+✅ **Security Validation**: Django deployment checks
+✅ **Docker Build**: Automated Docker image creation
+✅ **Docker Security Scan**: Basic container security checks
+✅ **Docker Push**: Automated push to Docker Hub
 ✅ **Comprehensive Reporting**: Test results, coverage, and build artifacts
 
 ## Project Structure
 
 ```
+
 messaging_app/
-├── Jenkinsfile                 # Pipeline configuration
-├── setup_jenkins.sh           # Jenkins setup script
-├── run_tests_local.sh         # Local test runner
-├── requirements-test.txt       # Test dependencies
-├── pytest.ini                 # Test configuration
+├── Jenkinsfile # Pipeline configuration (Extended with Docker)
+├── setup_jenkins.sh # Jenkins setup script
+├── run_tests_local.sh # Local test runner
+├── run_tests_with_docker.sh # Extended test runner with Docker
+├── docker_setup_guide.sh # Docker Hub setup guide
+├── requirements-test.txt # Test dependencies
+├── pytest.ini # Test configuration
+├── Dockerfile # Docker image configuration
+├── .dockerignore # Docker ignore file
 ├── chats/
-│   ├── test_models.py         # Model tests
-│   ├── test_api.py            # API tests
-│   └── test_quick.py          # Quick tests
-└── JENKINS_IMPLEMENTATION_GUIDE.md  # Detailed guide
-```
+│ ├── test_models.py # Model tests
+│ ├── test_api.py # API tests
+│ └── test_quick.py # Quick tests
+└── JENKINS_IMPLEMENTATION_GUIDE.md # Detailed guide
+
+````
 
 ## Test Types
 
@@ -114,6 +156,10 @@ messaging_app/
 8. **Security Checks** - Django security validation
 9. **Integration Tests** - Full API testing
 10. **Generate Reports** - Comprehensive reporting
+11. **Docker Build** - Build container image
+12. **Docker Security Scan** - Container security checks
+13. **Docker Push** - Push to Docker Hub
+14. **Docker Cleanup** - Clean up local images
 
 ## Troubleshooting
 
@@ -128,7 +174,7 @@ docker logs jenkins
 
 # Restart
 docker restart jenkins
-```
+````
 
 ### Test Failures
 

@@ -15,6 +15,13 @@ pipeline {
         
         // Secret key for Django (use a test key)
         DJANGO_SECRET_KEY = "test-secret-key-for-jenkins-pipeline-do-not-use-in-production"
+        
+        // Docker environment variables
+        DOCKER_IMAGE_NAME = "alx-messaging-app"
+        DOCKER_TAG = "${BUILD_NUMBER}"
+        DOCKER_LATEST_TAG = "latest"
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
+        DOCKER_REGISTRY = "docker.io"
     }
     
     stages {
@@ -214,6 +221,115 @@ pipeline {
                 }
             }
         }
+        
+        stage('Docker Build') {
+            when {
+                expression { 
+                    // Only build Docker image if tests passed
+                    currentBuild.currentResult == 'SUCCESS' 
+                }
+            }
+            steps {
+                echo 'Building Docker image...'
+                dir('messaging_app') {
+                    script {
+                        // Build Docker image with multiple tags
+                        sh """
+                            echo 'Building Docker image for ALX Messaging App...'
+                            docker build -t ${DOCKERHUB_CREDENTIALS_USR}/${DOCKER_IMAGE_NAME}:${DOCKER_TAG} .
+                            docker build -t ${DOCKERHUB_CREDENTIALS_USR}/${DOCKER_IMAGE_NAME}:${DOCKER_LATEST_TAG} .
+                            
+                            echo 'Docker image built successfully!'
+                            docker images | grep ${DOCKER_IMAGE_NAME}
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Docker Security Scan') {
+            when {
+                expression { 
+                    currentBuild.currentResult == 'SUCCESS' 
+                }
+            }
+            steps {
+                echo 'Running Docker security scan...'
+                dir('messaging_app') {
+                    script {
+                        sh """
+                            echo 'Scanning Docker image for vulnerabilities...'
+                            
+                            # Basic image inspection
+                            docker inspect ${DOCKERHUB_CREDENTIALS_USR}/${DOCKER_IMAGE_NAME}:${DOCKER_TAG} > docker_inspect.json
+                            
+                            # Check image size
+                            echo "Image size:"
+                            docker images ${DOCKERHUB_CREDENTIALS_USR}/${DOCKER_IMAGE_NAME}:${DOCKER_TAG} --format "table {{.Repository}}\\t{{.Tag}}\\t{{.Size}}"
+                            
+                            # Basic security check - ensure non-root user
+                            if docker run --rm ${DOCKERHUB_CREDENTIALS_USR}/${DOCKER_IMAGE_NAME}:${DOCKER_TAG} whoami | grep -q 'appuser'; then
+                                echo '✅ Security check passed: Running as non-root user'
+                            else
+                                echo '⚠️  Security warning: Container may be running as root'
+                            fi
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Docker Push') {
+            when {
+                expression { 
+                    currentBuild.currentResult == 'SUCCESS' 
+                }
+            }
+            steps {
+                echo 'Pushing Docker image to Docker Hub...'
+                dir('messaging_app') {
+                    script {
+                        sh """
+                            echo 'Logging into Docker Hub...'
+                            echo '${DOCKERHUB_CREDENTIALS_PSW}' | docker login ${DOCKER_REGISTRY} -u '${DOCKERHUB_CREDENTIALS_USR}' --password-stdin
+                            
+                            echo 'Pushing Docker images...'
+                            docker push ${DOCKERHUB_CREDENTIALS_USR}/${DOCKER_IMAGE_NAME}:${DOCKER_TAG}
+                            docker push ${DOCKERHUB_CREDENTIALS_USR}/${DOCKER_IMAGE_NAME}:${DOCKER_LATEST_TAG}
+                            
+                            echo 'Docker images pushed successfully!'
+                            echo 'Image: ${DOCKERHUB_CREDENTIALS_USR}/${DOCKER_IMAGE_NAME}:${DOCKER_TAG}'
+                            echo 'Image: ${DOCKERHUB_CREDENTIALS_USR}/${DOCKER_IMAGE_NAME}:${DOCKER_LATEST_TAG}'
+                            
+                            # Logout from Docker Hub
+                            docker logout ${DOCKER_REGISTRY}
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Docker Cleanup') {
+            steps {
+                echo 'Cleaning up Docker images...'
+                dir('messaging_app') {
+                    script {
+                        sh """
+                            echo 'Removing local Docker images to save space...'
+                            
+                            # Remove built images from local system to save disk space
+                            docker rmi ${DOCKERHUB_CREDENTIALS_USR}/${DOCKER_IMAGE_NAME}:${DOCKER_TAG} || echo 'Image already removed'
+                            docker rmi ${DOCKERHUB_CREDENTIALS_USR}/${DOCKER_IMAGE_NAME}:${DOCKER_LATEST_TAG} || echo 'Image already removed'
+                            
+                            # Clean up dangling images
+                            docker image prune -f || echo 'No dangling images to remove'
+                            
+                            echo 'Docker cleanup completed'
+                        """
+                    }
+                }
+            }
+        }
     }
     
     post {
@@ -225,6 +341,7 @@ pipeline {
                 archiveArtifacts artifacts: 'reports/**/*', allowEmptyArchive: true
                 archiveArtifacts artifacts: 'coverage_html_report/**/*', allowEmptyArchive: true
                 archiveArtifacts artifacts: 'coverage.xml', allowEmptyArchive: true
+                archiveArtifacts artifacts: 'docker_inspect.json', allowEmptyArchive: true
             }
             
             // Publish test results if available
@@ -244,6 +361,8 @@ pipeline {
         success {
             echo '✅ Pipeline completed successfully!'
             echo 'All tests passed and reports generated.'
+            echo "🐳 Docker image built and pushed: ${DOCKERHUB_CREDENTIALS_USR}/${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
+            echo "🐳 Docker image available: ${DOCKERHUB_CREDENTIALS_USR}/${DOCKER_IMAGE_NAME}:${DOCKER_LATEST_TAG}"
         }
         
         failure {
