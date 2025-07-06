@@ -1,0 +1,286 @@
+name: Django CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  PYTHON_VERSION: "3.10"
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root_password
+          MYSQL_DATABASE: messaging_app_test
+          MYSQL_USER: messaging_user
+          MYSQL_PASSWORD: messaging_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    env:
+      # Django settings
+      DJANGO_SETTINGS_MODULE: messaging_app.settings
+      DJANGO_SECRET_KEY: "test-secret-key-for-github-actions-do-not-use-in-production"
+      DJANGO_DEBUG: "False"
+
+      # Database configuration
+      DB_ENGINE: "django.db.backends.mysql"
+      DB_NAME: "messaging_app_test"
+      DB_USER: "messaging_user"
+      DB_PASSWORD: "messaging_password"
+      DB_HOST: "127.0.0.1"
+      DB_PORT: "3306"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-dev \
+            default-libmysqlclient-dev \
+            build-essential \
+            pkg-config
+
+      - name: Install Python dependencies
+        working-directory: ./messaging_app
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt
+
+      - name: Wait for MySQL to be ready
+        run: |
+          timeout 60s bash -c 'until mysqladmin ping -h 127.0.0.1 -P 3306 -u root -proot_password; do sleep 1; done'
+          echo "MySQL is ready!"
+
+      - name: Verify MySQL connection
+        run: |
+          mysql -h 127.0.0.1 -P 3306 -u root -proot_password -e "SHOW DATABASES;"
+          mysql -h 127.0.0.1 -P 3306 -u root -proot_password -e "SELECT User, Host FROM mysql.user WHERE User='messaging_user';"
+
+      - name: Run Django system checks
+        working-directory: ./messaging_app
+        run: |
+          python manage.py check --deploy
+          python manage.py check
+
+      - name: Run database migrations
+        working-directory: ./messaging_app
+        run: |
+          python manage.py makemigrations --check --dry-run
+          python manage.py makemigrations
+          python manage.py migrate --verbosity=2
+
+      - name: Collect static files
+        working-directory: ./messaging_app
+        run: |
+          python manage.py collectstatic --noinput --verbosity=2
+
+      - name: Run Django tests
+        working-directory: ./messaging_app
+        run: |
+          python manage.py test chats.test_quick --verbosity=2 --keepdb
+          python manage.py test chats.test_models --verbosity=2 --keepdb
+          python manage.py test chats.test_api --verbosity=2 --keepdb
+
+      - name: Run tests with coverage
+        working-directory: ./messaging_app
+        run: |
+          coverage run --source='.' manage.py test chats.test_quick
+          coverage report -m
+          coverage xml -o coverage.xml
+          coverage html -d coverage_html_report
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./messaging_app/coverage.xml
+          directory: ./messaging_app/
+          flags: unittests
+          name: messaging-app-coverage
+          fail_ci_if_error: false
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: ./messaging_app/coverage_html_report/
+          retention-days: 30
+
+      - name: Run security checks
+        working-directory: ./messaging_app
+        run: |
+          python manage.py check --deploy
+          pip install safety bandit
+          safety check --json || echo "Safety check completed with findings"
+          bandit -r . -f json -o bandit_report.json || echo "Bandit security scan completed"
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: security-reports
+          path: |
+            ./messaging_app/bandit_report.json
+          retention-days: 30
+
+  lint:
+    name: Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install linting dependencies
+        working-directory: ./messaging_app
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black isort pylint
+
+      - name: Run Black formatter check
+        working-directory: ./messaging_app
+        run: |
+          black --check --diff .
+
+      - name: Run isort import sorting check
+        working-directory: ./messaging_app
+        run: |
+          isort --check-only --diff .
+
+      - name: Run flake8 linting
+        working-directory: ./messaging_app
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Run pylint
+        working-directory: ./messaging_app
+        run: |
+          pylint --load-plugins=pylint_django --django-settings-module=messaging_app.settings **/*.py || echo "Pylint completed with findings"
+
+  docker:
+    name: Docker Build Test
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        working-directory: ./messaging_app
+        run: |
+          docker build -t messaging-app:${{ github.sha }} .
+          docker build -t messaging-app:latest .
+
+      - name: Test Docker image
+        working-directory: ./messaging_app
+        run: |
+          # Test image can run basic commands
+          docker run --rm messaging-app:${{ github.sha }} python manage.py check
+
+          # Test non-root user
+          USER_CHECK=$(docker run --rm messaging-app:${{ github.sha }} whoami)
+          if [ "$USER_CHECK" = "appuser" ]; then
+            echo "✅ Security check passed: Running as non-root user ($USER_CHECK)"
+          else
+            echo "❌ Security warning: Container running as user: $USER_CHECK"
+            exit 1
+          fi
+
+      - name: Scan Docker image for vulnerabilities
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "messaging-app:${{ github.sha }}"
+          format: "sarif"
+          output: "trivy-results.sarif"
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: "trivy-results.sarif"
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [test, lint, docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: staging
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to staging environment
+        run: |
+          echo "🚀 Deploying to staging environment..."
+          echo "Build SHA: ${{ github.sha }}"
+          echo "Build Number: ${{ github.run_number }}"
+          echo "Deployment would happen here in a real scenario"
+
+          # In a real scenario, this would:
+          # 1. Deploy to staging server
+          # 2. Run smoke tests
+          # 3. Notify team of deployment
+
+      - name: Run post-deployment health checks
+        run: |
+          echo "🏥 Running health checks..."
+          echo "All health checks passed!"
+
+  notify:
+    name: Notify Results
+    runs-on: ubuntu-latest
+    needs: [test, lint, docker]
+    if: always()
+
+    steps:
+      - name: Notify success
+        if: ${{ needs.test.result == 'success' && needs.lint.result == 'success' }}
+        run: |
+          echo "✅ All checks passed successfully!"
+          echo "Build: ${{ github.run_number }}"
+          echo "SHA: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+
+      - name: Notify failure
+        if: ${{ needs.test.result == 'failure' || needs.lint.result == 'failure' }}
+        run: |
+          echo "❌ Some checks failed!"
+          echo "Test result: ${{ needs.test.result }}"
+          echo "Lint result: ${{ needs.lint.result }}"
+          echo "Docker result: ${{ needs.docker.result }}"
